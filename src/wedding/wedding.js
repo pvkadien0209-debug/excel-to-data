@@ -892,20 +892,23 @@ export default function WeddingPages() {
               <img src="/data/DZ4I6871.jpg" alt="Wedding Photo 2" />
             </div>
             <div className="gallery-item">
-              <img src="/data/DZ4I6978.jpg" alt="Wedding Photo 3" />
+              <img src="/data/DZ4I7437.jpg" alt="Wedding Photo 3" />
             </div>
             <div className="gallery-item">
               <img src="/data/DZ4I7068.jpg" alt="Wedding Photo 4" />
+            </div>{" "}
+            <div className="gallery-item">
+              <img src="/data/DZ4I7592.jpg" alt="Wedding Photo 5" />
             </div>
           </div>
 
           {/* Video Section - No Poster */}
-          <div className="video-container">
+          {/* <div className="video-container">
             <video ref={videoRef} controls>
               <source src="/data/project_outro.mp4" type="video/mp4" />
               Trình duyệt của bạn không hỗ trợ video.
             </video>
-          </div>
+          </div> */}
         </div>
 
         {/* Dress Code Section */}
