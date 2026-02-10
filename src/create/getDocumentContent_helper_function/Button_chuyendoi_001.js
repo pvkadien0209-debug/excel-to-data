@@ -101,26 +101,30 @@ function C_NextStep_DontUnifile() {
 function D_TimVaHienThiThayThe() {
   try {
     let input = JSON.parse($("#ResID").text());
-
     if (!input || input.length < 2) {
       alert("Dữ liệu không đủ để xử lý. Cần ít nhất 2 sheet.");
       return;
     }
-
     // Array đầu tiên chứa các ADD_...
     let arrayGoc = input[0];
-
     // Tạo object để lưu kết quả theo từng ADD_
     let ketQuaMap = {};
+
+    // === HELPER: Lấy header của từng sheet để build object ===
+    // Header của sheet gốc (index 0)
+    let headerGoc = arrayGoc[0] || [];
+    // Headers của các sheet thay thế
+    let headersThayThe = [];
+    for (let arrIndex = 1; arrIndex < input.length; arrIndex++) {
+      headersThayThe[arrIndex - 1] = input[arrIndex][0] || [];
+    }
 
     // Duyệt qua từng dòng của array gốc
     for (let rowIndex = 0; rowIndex < arrayGoc.length; rowIndex++) {
       let row = arrayGoc[rowIndex];
-
       // Duyệt qua từng cột trong dòng
       for (let colIndex = 0; colIndex < row.length; colIndex++) {
         let cellValue = row[colIndex];
-
         // Chỉ xử lý các cell có giá trị bắt đầu bằng "ADD_"
         if (
           cellValue &&
@@ -135,31 +139,48 @@ function D_TimVaHienThiThayThe() {
             };
           }
 
-          // Tìm giá trị từ các sheet tiếp theo
-          for (let arrIndex = 1; arrIndex < input.length; arrIndex++) {
-            let arrayThayThe = input[arrIndex];
+          // === XỬ LÝ ADD_MODEOBJ: JSON.stringify nguyên obj dòng tương ứng ===
+          if (cellValue.startsWith("ADD_MODEOBJ")) {
+            for (let arrIndex = 1; arrIndex < input.length; arrIndex++) {
+              let arrayThayThe = input[arrIndex];
+              let headerSheet = headersThayThe[arrIndex - 1];
 
-            // Kiểm tra xem có dòng và cột tương ứng không
-            if (arrayThayThe[rowIndex] && arrayThayThe[rowIndex][colIndex]) {
-              let giaTriThayThe = arrayThayThe[rowIndex][colIndex];
-
-              // Lưu giá trị (kể cả NULL để giữ đúng vị trí cột)
-              ketQuaMap[cellValue].sheets[arrIndex - 1] = giaTriThayThe;
-            } else {
-              // Nếu không có giá trị, để trống
-              ketQuaMap[cellValue].sheets[arrIndex - 1] = "";
+              // Kiểm tra dòng tương ứng có tồn tại không
+              if (arrayThayThe[rowIndex]) {
+                let rowData = arrayThayThe[rowIndex];
+                // Build object từ header + giá trị dòng
+                let obj = {};
+                for (let h = 0; h < headerSheet.length; h++) {
+                  let key = headerSheet[h];
+                  let val = rowData[h] !== undefined ? rowData[h] : null;
+                  obj[key] = val;
+                }
+                // Stringify nguyên object
+                ketQuaMap[cellValue].sheets[arrIndex - 1] = JSON.stringify(obj);
+              } else {
+                ketQuaMap[cellValue].sheets[arrIndex - 1] = "";
+              }
+            }
+          } else {
+            // === XỬ LÝ BÌNH THƯỜNG (logic cũ) ===
+            for (let arrIndex = 1; arrIndex < input.length; arrIndex++) {
+              let arrayThayThe = input[arrIndex];
+              // Kiểm tra xem có dòng và cột tương ứng không
+              if (arrayThayThe[rowIndex] && arrayThayThe[rowIndex][colIndex]) {
+                let giaTriThayThe = arrayThayThe[rowIndex][colIndex];
+                ketQuaMap[cellValue].sheets[arrIndex - 1] = giaTriThayThe;
+              } else {
+                ketQuaMap[cellValue].sheets[arrIndex - 1] = "";
+              }
             }
           }
         }
       }
     }
-
     // Chuyển object thành array
     let ketQua = Object.values(ketQuaMap);
-
     // Số lượng sheet (trừ sheet đầu tiên)
     let soLuongSheet = input.length - 1;
-
     // Hiển thị popup với kết quả
     hienThiPopupKetQua(ketQua, soLuongSheet);
   } catch (error) {
@@ -175,7 +196,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
   for (let i = 1; i <= soLuongSheet; i++) {
     headerSheets += `<th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Sheet ${i}</th>`;
   }
-
   // Tạo các dòng dữ liệu
   let rowsHTML = ketQua
     .map((item, index) => {
@@ -184,7 +204,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
           // Xử lý hiển thị giá trị
           let displayValue = sheetValue || "";
           let cellColor = "";
-
           // Tô màu khác nhau cho các loại giá trị
           if (displayValue === "NULL" || displayValue === "null") {
             cellColor = "background: #ffebee; color: #999;";
@@ -194,14 +213,19 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
           } else if (displayValue === "") {
             cellColor = "background: #fafafa;";
             displayValue = "-";
+          } else if (item.add.startsWith("ADD_MODEOBJ")) {
+            // Màu riêng cho MODEOBJ (JSON string)
+            cellColor = "background: #e1f5fe; color: #01579b;";
+            // Hiển thị rút gọn nếu quá dài
+            if (displayValue.length > 120) {
+              displayValue = `<span title='${displayValue.replace(/'/g, "&#39;")}'>${displayValue.substring(0, 120)}...</span>`;
+            }
           } else {
             cellColor = "background: #e8f5e9;";
           }
-
-          return `<td style="padding: 10px; border: 1px solid #ddd; ${cellColor}">${displayValue}</td>`;
+          return `<td style="padding: 10px; border: 1px solid #ddd; ${cellColor} max-width: 400px; word-break: break-all; font-size: 12px;">${displayValue}</td>`;
         })
         .join("");
-
       return `
       <tr style="background: ${index % 2 === 0 ? "#f9f9f9" : "white"};">
         <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; color: #d32f2f;">${item.add}</td>
@@ -210,7 +234,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
     `;
     })
     .join("");
-
   // Tạo HTML cho popup
   let popupHTML = `
     <div id="popupOverlay" style="
@@ -270,6 +293,7 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
         <div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 5px; font-size: 13px;">
           <strong>Chú thích màu:</strong>
           <span style="display: inline-block; padding: 2px 8px; margin-left: 10px; background: #e8f5e9; border-radius: 3px;">Giá trị hợp lệ</span>
+          <span style="display: inline-block; padding: 2px 8px; margin-left: 5px; background: #e1f5fe; border-radius: 3px;">MODEOBJ (JSON)</span>
           <span style="display: inline-block; padding: 2px 8px; margin-left: 5px; background: #fff3e0; border-radius: 3px;">ADD_...</span>
           <span style="display: inline-block; padding: 2px 8px; margin-left: 5px; background: #ffebee; border-radius: 3px;">NULL</span>
           <span style="display: inline-block; padding: 2px 8px; margin-left: 5px; background: #fafafa; border-radius: 3px;">Trống</span>
@@ -306,10 +330,8 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
       </div>
     </div>
   `;
-
   // Thêm popup vào body
   $("body").append(popupHTML);
-
   // Xử lý nút Copy Table
   $("#btnCopyTable").click(function () {
     try {
@@ -319,7 +341,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
         textToCopy += `\tSheet ${i}`;
       }
       textToCopy += "\n";
-
       ketQua.forEach((item) => {
         textToCopy += item.add;
         item.sheets.forEach((sheetValue) => {
@@ -329,7 +350,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
         });
         textToCopy += "\n";
       });
-
       // Copy vào clipboard
       const tempTextArea = document.createElement("textarea");
       tempTextArea.value = textToCopy;
@@ -337,7 +357,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
       tempTextArea.select();
       document.execCommand("copy");
       document.body.removeChild(tempTextArea);
-
       // Thông báo thành công
       $(this).text("✅ Đã Copy Table!");
       setTimeout(() => {
@@ -347,19 +366,16 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
       alert("Lỗi khi copy: " + error.message);
     }
   });
-
   // Xử lý nút Copy JSON
   $("#btnCopyJSON").click(function () {
     try {
       const jsonString = JSON.stringify(ketQua, null, 2);
-
       const tempTextArea = document.createElement("textarea");
       tempTextArea.value = jsonString;
       document.body.appendChild(tempTextArea);
       tempTextArea.select();
       document.execCommand("copy");
       document.body.removeChild(tempTextArea);
-
       $(this).text("✅ Đã Copy JSON!");
       setTimeout(() => {
         $("#btnCopyJSON").text("📄 Copy JSON");
@@ -368,7 +384,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
       alert("Lỗi khi copy JSON: " + error.message);
     }
   });
-
   // Xử lý nút Đóng
   $("#btnClosePopup, #popupOverlay").click(function (e) {
     if (e.target.id === "btnClosePopup" || e.target.id === "popupOverlay") {
