@@ -98,7 +98,7 @@ function C_NextStep_DontUnifile() {
 
 // Button_chuyendoi_001.js - Thay thế hàm C_TimVaHienThiThayThe
 
-function D_TimVaHienThiThayThe() {
+function D_TimVaHienThiThayThe_AddvaMode_tuFileExcelMuti() {
   try {
     let input = JSON.parse($("#ResID").text());
     if (!input || input.length < 2) {
@@ -392,9 +392,9 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
   });
 }
 
-// Cập nhật hàm E_LayTatCaCodeVaText trong Button_chuyendoi_001.js
+// Cập nhật hàm E_LayTatCaCodeVaText_toAudioCode trong Button_chuyendoi_001.js
 
-function E_LayTatCaCodeVaText() {
+function E_LayTatCaCodeVaText_toAudioCode() {
   try {
     let input = JSON.parse($("#ResID").text());
 
@@ -464,7 +464,7 @@ function E_LayTatCaCodeVaText() {
     // Hiển thị popup
     hienThiPopupCodeText(allData);
   } catch (error) {
-    console.log("Lỗi E_LayTatCaCodeVaText");
+    console.log("Lỗi E_LayTatCaCodeVaText_toAudioCode");
     console.log(error);
     alert("Có lỗi xảy ra: " + error.message);
   }
@@ -700,6 +700,6 @@ export {
   A_Unifile_Outside,
   B_NextStep_OUTSIDE,
   C_NextStep_DontUnifile,
-  D_TimVaHienThiThayThe,
-  E_LayTatCaCodeVaText,
+  D_TimVaHienThiThayThe_AddvaMode_tuFileExcelMuti,
+  E_LayTatCaCodeVaText_toAudioCode,
 };

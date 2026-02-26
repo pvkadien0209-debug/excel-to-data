@@ -2,6 +2,7 @@ import "./App.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 // import DocumentsForMap from "./getDocument_Content.js";
 import DocumentsForMap from "./getDocument_Content";
+import VideoRemotionInfoSearch from "./videoRemotionInfoSearch.js";
 import Test from "./prac_componets/A1_Get_Test";
 import VideoView from "./prac_componets/C1_VideoView";
 import VoiceList from "./getVoiceslist";
@@ -30,6 +31,7 @@ function App() {
         <Routes>
           <Route path="/" element={<WeddingPages />} />{" "}
           <Route path="/doc" element={<DocumentsForMap />} />{" "}
+          <Route path="/rem" element={<VideoRemotionInfoSearch />} />{" "}
           {/* <Route path="/test" element={<Test />} />
           <Route path="/videoview" element={<VideoView />} />
           <Route path="/voice" element={<VoiceList />} />
@@ -39,11 +41,9 @@ function App() {
           <Route path="/newvideomodel" element={<NewVideoModel />} />
           <Route path="/newtable" element={<NewTableFromJson />} />
           <Route path="/cut" element={<AudioSplitter />} /> */}
-
           {/* <Route path="/merge" element={<VideoMerger />} />
           <Route path="/merge01" element={<VideoMerger01 />} />
           <Route path="/merge02" element={<VideoMerger02 />} />{" "} */}
-          
           {/* <Route path="/merge" element={<VideoMerger03 />} />{" "}
           <Route path="/ghiam" element={<GhiAm />} />
           <Route path="/youtube" element={<YouTubePlaylist />} />
