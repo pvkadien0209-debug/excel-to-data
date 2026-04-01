@@ -1,205 +1,240 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function initializeVoicesAndPlatform02(n, setVoicesCONSOLE, setVoices) {
-  if (n > 1) {
-    return Promise.resolve(null);
+// ─── Edge/Windows resume hack ──────────────────────────────────────────────
+// Edge trên Windows có bug: speechSynthesis tự pause sau ~14s
+// Fix: gọi resume() mỗi 5 giây khi đang đọc
+function startEdgeResumeFix() {
+  return setInterval(() => {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+  }, 5000);
+}
+
+// ─── Tách text thành mảng câu ngắn ─────────────────────────────────────────
+function splitIntoChunks(text) {
+  // Tách theo . ! ? — giữ dấu câu ở cuối mỗi chunk
+  const chunks = text.match(/[^.!?,;]+[.!?,;]*/g) ?? [text];
+  return chunks.map((c) => c.trim()).filter(Boolean);
+}
+
+// ─── Đọc tuần tự từng chunk — fix giật tiếng Việt ─────────────────────────
+function speakChunks(chunks, voice, rate, onDone) {
+  if (!chunks.length) {
+    onDone?.();
+    return;
   }
 
-  return new Promise((resolve) => {
-    const getVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          resolve(testVoices());
-        };
-      } else {
-        resolve(testVoices());
-      }
-    };
+  const [head, ...tail] = chunks;
+  const utt = new SpeechSynthesisUtterance(head);
+  utt.voice = voice;
+  utt.lang = voice.lang;
+  utt.rate = rate;
+  utt.pitch = 1.0;
+  utt.volume = 1.0;
 
-    const findVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      let imale = null;
-      let ifemale = null;
-      voices.forEach((voice, index) => {
-        setVoicesCONSOLE((prevVoices) => [
-          ...prevVoices,
-          JSON.stringify({ index: index, name: voice.name, lang: voice.lang }),
-        ]);
-      });
-      if (isRunningOnWindows()) {
-        setVoicesCONSOLE((prevVoices) => [...prevVoices, "ON WINDOWS"]);
-        voices.forEach((voice, index) => {
-          if (voice.lang.includes("en-US")) {
-            if (voice.name.includes("David")) {
-              imale = index;
-            }
-            if (voice.name.includes("Zira")) {
-              ifemale = index;
-            }
-          }
-        });
-      } else if (isRunningOnMac() || isIOS()) {
-        setVoicesCONSOLE((prevVoices) => [...prevVoices, "ON MAC/iOS"]);
-        voices.forEach((voice, index) => {
-          if (voice.lang.includes("en-GB") || voice.lang.includes("en-AU")) {
-            if (voice.name.includes("Daniel")) {
-              imale = index;
-            }
-            if (voice.name.includes("Karen")) {
-              ifemale = index;
-            }
-          }
-        });
-      } else if (isAndroid()) {
-        setVoicesCONSOLE((prevVoices) => [...prevVoices, "ON ANDROID"]);
-        voices.forEach((voice, index) => {
-          if (voice.lang.includes("en-GB")) {
-            imale = index;
-            ifemale = index;
-          }
-        });
-      }
-
-      setVoicesCONSOLE((prevVoices) => [
-        ...prevVoices,
-        JSON.stringify({ imale, ifemale }),
-      ]);
-
-      return { imale, ifemale };
-    };
-
-    const testVoices = () => {
-      const result1 = findVoices();
-      const result2 = findVoices();
-
-      if (JSON.stringify(result1) === JSON.stringify(result2)) {
-        return result1;
-      } else {
-        const result3 = findVoices();
-        if (JSON.stringify(result1) === JSON.stringify(result3)) {
-          return result1;
-        } else if (JSON.stringify(result2) === JSON.stringify(result3)) {
-          return result2;
-        } else {
-          return result3;
-        }
-      }
-    };
-
-    if ("speechSynthesis" in window) {
-      getVoices();
-    } else {
-      setTimeout(() => {
-        initializeVoicesAndPlatform02(n + 1, setVoicesCONSOLE);
-      }, 1000);
+  utt.onend = () => speakChunks(tail, voice, rate, onDone);
+  utt.onerror = (err) => {
+    // Bỏ qua lỗi "interrupted" (do cancel trước đó), tiếp tục chunk tiếp theo
+    if (err.error !== "interrupted") {
+      console.error("Speech error:", err.error, "|", head);
     }
+    speakChunks(tail, voice, rate, onDone);
+  };
+
+  window.speechSynthesis.speak(utt);
+}
+
+// ─── ReadMessage ────────────────────────────────────────────────────────────
+function ReadMessage(voice, text, resumeTimerRef) {
+  window.speechSynthesis.cancel();
+
+  // Xoá timer cũ nếu có
+  if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+  resumeTimerRef.current = startEdgeResumeFix();
+
+  const chunks = splitIntoChunks(text);
+
+  speakChunks(chunks, voice, 0.85, () => {
+    clearInterval(resumeTimerRef.current);
+    resumeTimerRef.current = null;
+    console.log("✅ Đọc xong toàn bộ");
   });
 }
 
+// ─── Tìm voices trên Windows Edge ──────────────────────────────────────────
+const VI_KEYWORDS = ["vi-VN", "Vietnamese", "HoaiMy", "NamMinh", "vi_VN"];
+const EN_MALE_KEYWORDS = ["David", "Mark", "Guy", "James", "Richard"];
+const EN_FEMALE_KEYWORDS = ["Zira", "Jenny", "Aria", "Michelle", "Clara"];
+
+function findVoicesWindows() {
+  const all = window.speechSynthesis.getVoices();
+
+  const vi = all.filter((v) =>
+    VI_KEYWORDS.some((kw) => v.lang.includes(kw) || v.name.includes(kw))
+  );
+
+  const enAll = all.filter((v) => v.lang.startsWith("en"));
+  const enMale =
+    enAll.find((v) => EN_MALE_KEYWORDS.some((k) => v.name.includes(k))) ?? null;
+  const enFemale =
+    enAll.find((v) => EN_FEMALE_KEYWORDS.some((k) => v.name.includes(k))) ?? null;
+
+  return { vi, enMale, enFemale, all };
+}
+
+// ─── Load voices (Edge đôi khi cần chờ onvoiceschanged) ────────────────────
+function loadVoices() {
+  return new Promise((resolve) => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) return resolve(findVoicesWindows());
+    window.speechSynthesis.onvoiceschanged = () =>
+      resolve(findVoicesWindows());
+  });
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+const DEMO_TEXT_VI =
+  "Tôi là người Việt Nam. Tôi rất vui khi được gặp bạn hôm nay. Chúc bạn một ngày tốt lành và thật nhiều may mắn.";
+const DEMO_TEXT_EN =
+  "She is of medium height. She has long black hair and is always smiling. It is a pleasure to meet you today.";
+
 const VoiceList = () => {
-  const [voices, setVoices] = useState([]);
-  const [voicesPICK, setVoicesPICK] = useState([]);
-  const [voicesCONSOLE, setVoicesCONSOLE] = useState([]);
+  const [voices, setVoices] = useState({ vi: [], enMale: null, enFemale: null, all: [] });
+  const [activeIdx, setActiveIdx] = useState(null);
+  const resumeTimerRef = useRef(null);
 
   useEffect(() => {
-    initializeVoicesAndPlatform02(0, setVoicesCONSOLE).then(setVoicesPICK);
+    loadVoices().then(setVoices);
+    return () => {
+      window.speechSynthesis.cancel();
+      if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+    };
   }, []);
 
+  const speak = (voice, text, idx) => {
+    setActiveIdx(idx);
+    ReadMessage(voice, text, resumeTimerRef);
+  };
+
+  const stop = () => {
+    window.speechSynthesis.cancel();
+    clearInterval(resumeTimerRef.current);
+    resumeTimerRef.current = null;
+    setActiveIdx(null);
+  };
+
   return (
-    <div>
-      <h1>Available Voices</h1>
-      <ul>
-        {voices.map((voice, index) => (
-          <li key={index}>
-            {voice.name} ({voice.lang})
-          </li>
+    <div style={styles.wrap}>
+      <h2 style={styles.title}>🔊 Voice Tester — Edge / Windows</h2>
+
+      {/* ── Tiếng Việt ── */}
+      <section style={styles.section}>
+        <h3 style={styles.sectionTitle}>🇻🇳 Tiếng Việt ({voices.vi.length})</h3>
+        {voices.vi.length === 0 && (
+          <p style={styles.empty}>Không tìm thấy voice tiếng Việt trên thiết bị này.</p>
+        )}
+        {voices.vi.map((v, i) => (
+          <VoiceRow
+            key={v.name}
+            voice={v}
+            text={DEMO_TEXT_VI}
+            idx={`vi-${i}`}
+            active={activeIdx === `vi-${i}`}
+            onPlay={(voice, text) => speak(voice, text, `vi-${i}`)}
+          />
         ))}
-      </ul>
-      <hr />
-      <pre>{JSON.stringify(voicesPICK, null, 2)}</pre>
-      <hr />
-      {voicesCONSOLE.map((e, i) => (
-        <p
-          style={{ cursor: "pointer" }}
-          onClick={() => {
-            try {
-              const jsonData = JSON.parse(e);
-              const textNum = jsonData.index;
-              ReadMessage(textNum, e);
-            } catch (error) {
-              alert("Not");
-            }
-          }}
-          key={i}
-        >
-          {e}
-        </p>
-      ))}
+      </section>
+
+      {/* ── Tiếng Anh ── */}
+      <section style={styles.section}>
+        <h3 style={styles.sectionTitle}>🇬🇧 Tiếng Anh</h3>
+        {[voices.enMale, voices.enFemale].filter(Boolean).map((v, i) => (
+          <VoiceRow
+            key={v.name}
+            voice={v}
+            text={DEMO_TEXT_EN}
+            idx={`en-${i}`}
+            active={activeIdx === `en-${i}`}
+            onPlay={(voice, text) => speak(voice, text, `en-${i}`)}
+          />
+        ))}
+      </section>
+
+      {/* ── Tất cả voices ── */}
+      <section style={styles.section}>
+        <h3 style={styles.sectionTitle}>📋 Tất cả ({voices.all.length})</h3>
+        <div style={styles.allList}>
+          {voices.all.map((v, i) => (
+            <div key={v.name} style={styles.allRow}>
+              <span style={styles.badge}>{i}</span>
+              <span style={styles.name}>{v.name}</span>
+              <span style={styles.lang}>{v.lang}</span>
+              <button
+                style={styles.btn}
+                onClick={() =>
+                  speak(v, v.lang.startsWith("vi") ? DEMO_TEXT_VI : DEMO_TEXT_EN, `all-${i}`)
+                }
+              >
+                ▶
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <button style={styles.stopBtn} onClick={stop}>
+        ⏹ Dừng
+      </button>
     </div>
   );
 };
 
+// ─── VoiceRow ───────────────────────────────────────────────────────────────
+const VoiceRow = ({ voice, text, idx, active, onPlay }) => (
+  <div style={{ ...styles.row, ...(active ? styles.rowActive : {}) }}>
+    <div>
+      <strong>{voice.name}</strong>
+      <span style={styles.langTag}>{voice.lang}</span>
+    </div>
+    <button style={styles.btn} onClick={() => onPlay(voice, text)}>
+      {active ? "🔊" : "▶ Test"}
+    </button>
+  </div>
+);
+
+// ─── Styles ─────────────────────────────────────────────────────────────────
+const styles = {
+  wrap: { fontFamily: "sans-serif", maxWidth: 680, margin: "0 auto", padding: 24 },
+  title: { fontSize: 22, marginBottom: 16 },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 16, color: "#555", borderBottom: "1px solid #ddd", paddingBottom: 4 },
+  empty: { color: "#999", fontSize: 14 },
+  row: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "8px 12px", borderRadius: 8, background: "#f5f5f5", marginBottom: 6,
+  },
+  rowActive: { background: "#e0f7fa" },
+  langTag: { marginLeft: 8, fontSize: 12, color: "#888" },
+  btn: {
+    padding: "4px 12px", borderRadius: 6, border: "none",
+    background: "#1976d2", color: "#fff", cursor: "pointer", fontSize: 13,
+  },
+  stopBtn: {
+    padding: "8px 24px", borderRadius: 8, border: "none",
+    background: "#d32f2f", color: "#fff", cursor: "pointer", fontSize: 15, marginTop: 8,
+  },
+  allList: { display: "flex", flexDirection: "column", gap: 4 },
+  allRow: {
+    display: "flex", alignItems: "center", gap: 8,
+    padding: "4px 8px", borderRadius: 6, background: "#fafafa", fontSize: 13,
+  },
+  badge: {
+    minWidth: 28, textAlign: "center", background: "#eee",
+    borderRadius: 4, padding: "1px 4px", fontSize: 11, color: "#666",
+  },
+  name: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  lang: { color: "#888", fontSize: 12, minWidth: 60 },
+};
+
 export default VoiceList;
-
-function isIOS() {
-  return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-}
-
-function isAndroid() {
-  return /android/.test(navigator.userAgent.toLowerCase());
-}
-
-function isRunningOnWindows() {
-  return /windows/.test(navigator.userAgent.toLowerCase());
-}
-
-function isRunningOnMac() {
-  return /macintosh|mac os x/.test(navigator.userAgent.toLowerCase());
-}
-
-function countAndSplitSentences(text) {
-  const sentences = text.match(/[^!]+[!]+/g);
-  return sentences || [text];
-}
-
-async function ReadMessage(voiceNum, e) {
-  let text = "Tôi là người Việt nam";
-  if (!e.includes("vi-VN")) {
-    text =
-      "She is of medium height, has long black hair, and is always smiling.";
-  }
-  try {
-    const sentences = countAndSplitSentences(text);
-    console.log(sentences.length);
-    // Function to recursively read each sentence
-    const speakSentences = (index) => {
-      if (index >= sentences.length) {
-        // setIsRead(false);
-        return;
-      }
-
-      let msg = new SpeechSynthesisUtterance();
-      let voices = window.speechSynthesis.getVoices();
-      msg.voice = voices[voiceNum];
-      msg.rate = 0.8;
-      msg.text = sentences[index];
-
-      msg.onstart = () => {};
-
-      msg.onend = () => {
-        speakSentences(index + 1);
-      };
-
-      msg.onerror = (error) => {
-        console.error("Error in speech synthesis: ", error);
-      };
-
-      speechSynthesis.speak(msg);
-    };
-
-    speakSentences(0);
-  } catch (error) {
-    console.error("Error in ReadMessage function: ", error);
-  }
-}
