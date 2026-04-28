@@ -29,7 +29,7 @@ function speakChunks(chunks, voice, rate, onDone) {
   const utt = new SpeechSynthesisUtterance(head);
   utt.voice = voice;
   utt.lang = voice.lang;
-  utt.rate = rate;
+  utt.rate = 1.2;
   utt.pitch = 1.0;
   utt.volume = 1.0;
 
