@@ -455,7 +455,10 @@ const ChuyenDoi_Buoc_1 = {
   HuongDan: () => {
     $("#ResID04").text(
       `Chào mừng đến với Các Bước chuyển đổi từ JSON ban đầu 
-      (1) Lấy tất cả Object có Type là không có HD`
+      (1) Lấy tất cả Object có Type là không có HD | Ban đầu là file excel gồm 1 (HD-Bmark	HD-02	HD-03			getIndexInTable	type	fsp	01-qs-01	01-aw-01	01-submit-01
+),2 (ZZZZA1	ZZZZB1	ZZZZB2	ZZZZB3	ZZZZB4
+)row =4,3 (HD-01	HD-02	HD-03	HD-04	HD-05	IFname	IFdes	IF-audiocode
+); => bấm lấy LayBang => bấm Daco.. => down về file excel | từ file excel chọn 11-20 bấm tranMutiset => bấm lấy json down file json`
     );
   },
   LayBangFsp_1bang_toCopy: () => FN_01(),
