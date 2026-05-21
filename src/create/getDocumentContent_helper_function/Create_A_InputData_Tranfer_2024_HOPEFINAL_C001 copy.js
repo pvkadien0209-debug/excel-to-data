@@ -167,7 +167,7 @@ function transformInputArray(inputArray) {
   let TV = removeAllNullObjects(nextStepOutside(res[4]));
   let IP = removeAllNullObjects(nextStepOutside(res[5]));
   let TB = extractNonNullValuesByIndex(
-    removeAllNullObjects(nextStepOutside(res[2])),
+    removeAllNullObjects(nextStepOutside(res[2]))
   );
   let charactor = AllConvertData(nextStepOutside(res[3]));
   let SEOParce = res[4][0];
@@ -246,12 +246,12 @@ function transformInputArray(inputArray) {
   try {
     if (IF[0].IFname) {
       id_f_excel_to_total_form = removeVietnameseAccents(
-        IF[0].IFname.split(" ").join("-"),
+        IF[0].IFname.split(" ").join("-")
       );
       name_f_excel_to_total_form = IF[0].IFname;
     } else {
       id_f_excel_to_total_form = removeVietnameseAccents(
-        IF[0].Ifname.split(" ").join("-"),
+        IF[0].Ifname.split(" ").join("-")
       );
       name_f_excel_to_total_form = IF[0].Ifname;
     }
@@ -458,202 +458,23 @@ function checkStringInArray(inputString, array) {
   return [false]; // Nếu không trùng, trả về false
 }
 
-// function transMultiSet() {
-//   const inputdata = getDataFromScreen();
-//   let res = [];
-//   inputdata.forEach((e) => {
-//     res.push(transformInputArray(e));
-//   });
-//   let i = 0;
-//   let alladdId = [];
-//   let iCount_female = 0;
-//   let iCount_male = 0;
-//   const langIDFemale = [
-//     101,
-//     //  103, 105, 107
-//   ];
-//   const langIDMale = [
-//     102,
-//     //  104, 106, 108
-//   ];
-
-//   res.forEach((e) => {
-//     e.charactor = e.charactor.filter((e1) => e1.gender !== null);
-//   });
-
-//   res.forEach((e, index_total) => {
-//     let RepresentativeCode = e.HDTB.IF["IF-audiocode"]
-//       ? e.HDTB.IF["IF-audiocode"]
-//       : "";
-
-//     e.charactor.forEach((eChar, iChar) => {
-//       let langid = "101";
-//       let index_to_random = index_total;
-//       if (eChar.gender === "female") {
-//         langid = langIDFemale[index_to_random % 1];
-//         // iCount_female++;
-//       }
-//       if (eChar.gender === "male") {
-//         langid = langIDMale[index_to_random % 1];
-//         // iCount_male++;
-//       }
-
-//       if (eChar.fsp !== undefined) {
-//         alladdId.push({
-//           text: eChar.fsp,
-//           audioCode: RepresentativeCode + "a" + i,
-//           lang: langid,
-//         });
-//         eChar.fspSets = [
-//           {
-//             st: eChar.fsp,
-//             id: RepresentativeCode + "a" + i,
-//             // lang: langid,
-//           },
-//         ];
-//         i++;
-//       }
-//       if (eChar.data !== undefined) {
-//         eChar.data.forEach((eConver) => {
-//           if (eConver.aw !== undefined) {
-//             eConver.aw01 = [];
-//             eConver.aw.forEach((eQsSentence) => {
-//               alladdId.push({
-//                 text: eQsSentence,
-//                 audioCode: RepresentativeCode + "a" + i,
-//                 lang: langid,
-//               });
-//               eConver.aw01.push({
-//                 st: eQsSentence,
-//                 id: RepresentativeCode + "a" + i,
-//                 // lang: langid,
-//               });
-//               i++;
-//             });
-//           }
-//         });
-//       }
-//     });
-//   });
-
-//   let UP_01 = ["Z"];
-//   let UP_02 = ["X", "H"];
-//   res.forEach((e) => {
-//     e.charactor_01 = shuffleArray_inorder_of_type(e.charactor, e.typeSets);
-
-//     let Normal_sets = [];
-//     let UP_01_sets = [];
-//     let UP_02_sets = [];
-
-//     e.charactor_01.forEach((e1) => {
-//       let n = false;
-
-//       // Check if e1.type matches any value in UP_01
-//       UP_01.forEach((e2) => {
-//         if (e1.type.includes(e2)) {
-//           n = true;
-//           UP_01_sets.push(e1);
-//         }
-//       });
-
-//       // Check if e1.type matches any value in UP_02
-//       UP_02.forEach((e2) => {
-//         if (e1.type.includes(e2)) {
-//           n = true;
-//           UP_02_sets.push(e1);
-//         }
-//       });
-
-//       // If matches were found, add e1 to Normal_sets
-//       if (!n) {
-//         Normal_sets.push(e1);
-//       }
-//     });
-
-//     delete e.charactor;
-//     e.charactor = Normal_sets;
-//     e.charactor_UP_01 = UP_01_sets;
-//     e.charactor_UP_02 = UP_02_sets;
-//     delete e.charactor_01;
-//   });
-
-//   alladdId.forEach((e) => {
-//     e.rate = 0.8;
-//   });
-
-//   let checkStAndLang = [];
-//   let deleteGET = [];
-
-//   alladdId.forEach((e, index) => {
-//     // Tìm kiếm nếu đã tồn tại phần tử với text + lang trùng
-//     let found = checkStAndLang.find((item) => item.text === e.text + e.lang);
-
-//     // Nếu tìm thấy phần tử trùng, thêm audioCode vào set của phần tử đó và loại bỏ phần tử khỏi alladdId
-//     if (found) {
-//       found.set.push(e.audioCode);
-//     } else {
-//       // Nếu không tìm thấy, thêm một phần tử mới vào checkStAndLang
-//       checkStAndLang.push({
-//         id: e.audioCode,
-//         text: e.text + e.lang,
-//         set: [e.audioCode],
-//       });
-//       deleteGET.push({
-//         audioCode: e.audioCode,
-//         text: e.text,
-//         lang: e.lang,
-//         rate: 0.75,
-//       });
-//     }
-//   });
-
-//   checkStAndLang = checkStAndLang.filter((item) => item.set.length >= 2);
-
-//   // console.log(JSON.stringify(checkStAndLang));
-
-//   console.log(
-//     "LENGTH:________________",
-//     deleteGET.length,
-//     "=========",
-//     checkStAndLang.length,
-//   );
-//   let stringOfres = JSON.stringify(res);
-
-//   checkStAndLang.forEach((e) => {
-//     e.set.forEach((e1) => {
-//       stringOfres = stringOfres.split('"' + e1 + '"').join('"' + e.id + '"');
-//     });
-//   });
-
-// //// YÊU CẦU tại đây dùng stringOfres lần lượt qua qs và aw và submit nếu có element có dạng chứa " | " thì tách ra và ghép vào
-// // array cũ; khi split (" | ") có phần tử rỗng sau trim() thì bỏ
-// // riêng aw01 thì cập nhật lại theo đã split mới bằng cách từ id cũ + thêm 1,2,3,4
-// //cập nhật lại deleteGET với các id mới thàng audioCode
-
-//   pushDataToScreen_02(deleteGET);
-//   pushDataToScreen(JSON.parse(stringOfres));
-
-//   countWords(countAllSentece);
-// }
 function transMultiSet() {
   const inputdata = getDataFromScreen();
   let res = [];
   inputdata.forEach((e) => {
     res.push(transformInputArray(e));
   });
-
   let i = 0;
   let alladdId = [];
   let iCount_female = 0;
   let iCount_male = 0;
-
   const langIDFemale = [
     101,
-    // 103, 105, 107
+    //  103, 105, 107
   ];
   const langIDMale = [
     102,
-    // 104, 106, 108
+    //  104, 106, 108
   ];
 
   res.forEach((e) => {
@@ -668,12 +489,13 @@ function transMultiSet() {
     e.charactor.forEach((eChar, iChar) => {
       let langid = "101";
       let index_to_random = index_total;
-
       if (eChar.gender === "female") {
         langid = langIDFemale[index_to_random % 1];
+        // iCount_female++;
       }
       if (eChar.gender === "male") {
         langid = langIDMale[index_to_random % 1];
+        // iCount_male++;
       }
 
       if (eChar.fsp !== undefined) {
@@ -686,11 +508,11 @@ function transMultiSet() {
           {
             st: eChar.fsp,
             id: RepresentativeCode + "a" + i,
+            // lang: langid,
           },
         ];
         i++;
       }
-
       if (eChar.data !== undefined) {
         eChar.data.forEach((eConver) => {
           if (eConver.aw !== undefined) {
@@ -704,6 +526,7 @@ function transMultiSet() {
               eConver.aw01.push({
                 st: eQsSentence,
                 id: RepresentativeCode + "a" + i,
+                // lang: langid,
               });
               i++;
             });
@@ -715,7 +538,6 @@ function transMultiSet() {
 
   let UP_01 = ["Z"];
   let UP_02 = ["X", "H"];
-
   res.forEach((e) => {
     e.charactor_01 = shuffleArray_inorder_of_type(e.charactor, e.typeSets);
 
@@ -726,6 +548,7 @@ function transMultiSet() {
     e.charactor_01.forEach((e1) => {
       let n = false;
 
+      // Check if e1.type matches any value in UP_01
       UP_01.forEach((e2) => {
         if (e1.type.includes(e2)) {
           n = true;
@@ -733,6 +556,7 @@ function transMultiSet() {
         }
       });
 
+      // Check if e1.type matches any value in UP_02
       UP_02.forEach((e2) => {
         if (e1.type.includes(e2)) {
           n = true;
@@ -740,6 +564,7 @@ function transMultiSet() {
         }
       });
 
+      // If matches were found, add e1 to Normal_sets
       if (!n) {
         Normal_sets.push(e1);
       }
@@ -759,12 +584,15 @@ function transMultiSet() {
   let checkStAndLang = [];
   let deleteGET = [];
 
-  alladdId.forEach((e) => {
+  alladdId.forEach((e, index) => {
+    // Tìm kiếm nếu đã tồn tại phần tử với text + lang trùng
     let found = checkStAndLang.find((item) => item.text === e.text + e.lang);
 
+    // Nếu tìm thấy phần tử trùng, thêm audioCode vào set của phần tử đó và loại bỏ phần tử khỏi alladdId
     if (found) {
       found.set.push(e.audioCode);
     } else {
+      // Nếu không tìm thấy, thêm một phần tử mới vào checkStAndLang
       checkStAndLang.push({
         id: e.audioCode,
         text: e.text + e.lang,
@@ -781,13 +609,14 @@ function transMultiSet() {
 
   checkStAndLang = checkStAndLang.filter((item) => item.set.length >= 2);
 
+  // console.log(JSON.stringify(checkStAndLang));
+
   console.log(
     "LENGTH:________________",
     deleteGET.length,
     "=========",
-    checkStAndLang.length,
+    checkStAndLang.length
   );
-
   let stringOfres = JSON.stringify(res);
 
   checkStAndLang.forEach((e) => {
@@ -796,167 +625,11 @@ function transMultiSet() {
     });
   });
 
-  // ===== SPLIT " | " cho qs / aw / fsp / aw01 =====
-  const splitPipeClean = (text) =>
-    String(text ?? "")
-      .split(/\s*\|\s*/g)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-  const normalizeTextField = (value) => {
-    if (typeof value === "string") {
-      const parts = splitPipeClean(value);
-      return value.includes("|") ? parts : (parts[0] ?? "");
-    }
-
-    if (Array.isArray(value)) {
-      return value.flatMap((item) => {
-        if (typeof item === "string") return splitPipeClean(item);
-        return [item];
-      });
-    }
-
-    return value;
-  };
-
-  const baseDeleteMap = new Map(deleteGET.map((e) => [e.audioCode, e]));
-  const removedAudioCodes = new Set();
-  const newDeleteGET = [];
-
-  const addNewDeleteGET = (baseAudioCode, newAudioCode, text) => {
-    const meta = baseDeleteMap.get(baseAudioCode) || {};
-    newDeleteGET.push({
-      audioCode: newAudioCode,
-      text: text,
-      lang: meta.lang ?? "",
-      rate: meta.rate ?? 0.75,
-    });
-  };
-
-  const walk = (node) => {
-    if (!node || typeof node !== "object") return;
-
-    if (Array.isArray(node)) {
-      node.forEach((item) => walk(item));
-      return;
-    }
-
-    // qs: split nếu có "|"
-    if (Object.prototype.hasOwnProperty.call(node, "qs")) {
-      node.qs = normalizeTextField(node.qs);
-    }
-
-    // aw: split nếu có "|"
-    if (Object.prototype.hasOwnProperty.call(node, "aw")) {
-      node.aw = normalizeTextField(node.aw);
-    }
-
-    // fsp: split nếu có "|", id mới theo kiểu cũ + b + index
-    if (typeof node.fsp === "string" && node.fsp.includes("|")) {
-      const parts = splitPipeClean(node.fsp);
-
-      const baseId =
-        Array.isArray(node.fspSets) && node.fspSets.length > 0
-          ? node.fspSets[0].id
-          : null;
-
-      if (baseId) {
-        removedAudioCodes.add(baseId);
-
-        node.fsp = parts;
-        node.fspSets = parts.map((st, idx) => {
-          const newId = `${baseId}b${idx + 1}`;
-          addNewDeleteGET(baseId, newId, st);
-          return {
-            st,
-            id: newId,
-          };
-        });
-      } else {
-        node.fsp = parts;
-      }
-    }
-
-    // aw01: split nếu có "|", id mới theo kiểu cũ + b + index
-    if (Array.isArray(node.aw01)) {
-      const aw01New = [];
-
-      node.aw01.forEach((item) => {
-        if (!item || typeof item !== "object") {
-          aw01New.push(item);
-          return;
-        }
-
-        if (typeof item.st === "string" && item.st.includes("|")) {
-          const parts = splitPipeClean(item.st);
-          const baseId = item.id;
-
-          if (baseId) {
-            removedAudioCodes.add(baseId);
-
-            parts.forEach((st, idx) => {
-              const newId = `${baseId}b${idx + 1}`;
-              aw01New.push({
-                ...item,
-                st,
-                id: newId,
-              });
-              addNewDeleteGET(baseId, newId, st);
-            });
-          } else {
-            parts.forEach((st) => {
-              aw01New.push({
-                ...item,
-                st,
-              });
-            });
-          }
-        } else {
-          aw01New.push({
-            ...item,
-            st: typeof item.st === "string" ? item.st.trim() : item.st,
-          });
-        }
-      });
-
-      node.aw01 = aw01New;
-    }
-
-    Object.keys(node).forEach((key) => {
-      if (
-        key !== "qs" &&
-        key !== "aw" &&
-        key !== "aw01" &&
-        key !== "fsp" &&
-        key !== "fspSets"
-      ) {
-        walk(node[key]);
-      }
-    });
-  };
-
-  const parsedRes = JSON.parse(stringOfres);
-  walk(parsedRes);
-
-  // bỏ các audioCode cũ đã bị split
-  deleteGET = deleteGET.filter((e) => !removedAudioCodes.has(e.audioCode));
-
-  // thêm audioCode mới sinh ra từ fsp / aw01
-  const existedAudio = new Set(deleteGET.map((e) => e.audioCode));
-  newDeleteGET.forEach((e) => {
-    if (!existedAudio.has(e.audioCode)) {
-      deleteGET.push(e);
-      existedAudio.add(e.audioCode);
-    }
-  });
-
-  stringOfres = JSON.stringify(parsedRes);
-
   pushDataToScreen_02(deleteGET);
   pushDataToScreen(JSON.parse(stringOfres));
-
   countWords(countAllSentece);
 }
+
 function f_excel_after_unifileandNext_t_table_4_copy() {
   const data = getDataFromScreen();
   const keysSet = Object.keys(data[0]);
@@ -1090,7 +763,7 @@ function replaceHDAll(res_no_HD, res_HD) {
                   stringTemp = stringTemp
                     .split(check_02)
                     .join(
-                      res_HD[Math.floor(iHD / 4) * 4 + ((iHD + 1) % 4)][keyDH],
+                      res_HD[Math.floor(iHD / 4) * 4 + ((iHD + 1) % 4)][keyDH]
                     );
                 }
                 if (stringTemp.includes(check_03)) {
@@ -1100,7 +773,7 @@ function replaceHDAll(res_no_HD, res_HD) {
                   stringTemp = stringTemp
                     .split(check_03)
                     .join(
-                      res_HD[Math.floor(iHD / 4) * 4 + ((iHD + 2) % 4)][keyDH],
+                      res_HD[Math.floor(iHD / 4) * 4 + ((iHD + 2) % 4)][keyDH]
                     );
                 }
 
@@ -1254,7 +927,7 @@ const peopleSets = [
 function countWords(sentences) {
   // Loại bỏ các câu trùng lặp bằng cách sử dụng Set
   const uniqueSentences = Array.from(
-    new Set(sentences.map((sentence) => sentence.trim().toLowerCase())),
+    new Set(sentences.map((sentence) => sentence.trim().toLowerCase()))
   );
 
   // Gộp tất cả các câu lại thành một chuỗi
@@ -1274,7 +947,7 @@ function countWords(sentences) {
   console.log(
     "Số câu (không trùng lặp):",
     uniqueSentences.length,
-    "__________________",
+    "__________________"
   );
   console.log("Tổng số từ:", wordsArray.length, "------------------");
   console.log("Số từ không trùng lặp:", uniqueWords.size, "++++++++++++++++++");
