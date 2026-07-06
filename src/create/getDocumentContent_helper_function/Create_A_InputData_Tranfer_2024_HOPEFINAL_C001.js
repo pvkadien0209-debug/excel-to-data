@@ -57,6 +57,7 @@ function processArrayGetMap(mappingArray) {
   let resultTB = [];
   let resultIF = [];
   let resultHT = [];
+  let resultMC = [];
   let resultOthers = [];
 
   input.forEach((element, i) => {
@@ -76,6 +77,8 @@ function processArrayGetMap(mappingArray) {
           resultIF.push(i);
         } else if (element.includes("HT")) {
           resultHT.push(i);
+        } else if (element.includes("MC")) {
+          resultMC.push(i);
         } else {
           resultOthers.push(i);
         }
@@ -91,6 +94,7 @@ function processArrayGetMap(mappingArray) {
     resultTV,
     resultIPA,
     resultHT,
+    resultMC,
   ];
 }
 
@@ -163,6 +167,7 @@ function transformInputArray(inputArray) {
     const resultTV = getElements(mapping[4]);
     const resultIPA = getElements(mapping[5]);
     const resultHT = getElements(mapping[6]);
+    const resultMC = getElements(mapping[7]);
     res[0].push(resultIF);
     res[1].push(resultHD);
     res[2].push(resultTB);
@@ -170,6 +175,7 @@ function transformInputArray(inputArray) {
     res[4].push(resultTV);
     res[5].push(resultIPA);
     res[6].push(resultHT);
+    res[7].push(resultMC);
   });
 
   let IF = removeAllNullObjects(nextStepOutside(res[0]));
@@ -178,11 +184,13 @@ function transformInputArray(inputArray) {
 
   let HD = removeAllNullObjects(nextStepOutside(res[1]));
   let HT = removeAllNullObjects(nextStepOutside(res[6]));
+  let MC = removeAllNullObjects(nextStepOutside(res[7]));
   let TV = removeAllNullObjects(nextStepOutside(res[4]));
   let IP = removeAllNullObjects(nextStepOutside(res[5]));
   let TB = extractNonNullValuesByIndex(
     removeAllNullObjects(nextStepOutside(res[2])),
   );
+
   let charactor = AllConvertData(nextStepOutside(res[3]));
   let SEOParce = res[4][0];
   try {
@@ -285,6 +293,7 @@ function transformInputArray(inputArray) {
       TV: TV,
       IPA: IP,
       HT: HT,
+      MC: MC,
     },
   };
 }
