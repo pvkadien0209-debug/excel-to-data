@@ -97,7 +97,7 @@ function transformInputArray(inputArray) {
   let IF = removeAllNullObjects(nextStepOutside(res[0]));
   let HD = removeAllNullObjects(nextStepOutside(res[1]));
   let TB = extractNonNullValuesByIndex(
-    removeAllNullObjects(nextStepOutside(res[2]))
+    removeAllNullObjects(nextStepOutside(res[2])),
   );
   let charactor = AllConvertData(nextStepOutside(res[3]));
   let SEOParce = res[4][0];
@@ -323,4 +323,5 @@ function transMultiSet() {
   pushDataToScreen(res);
 }
 
-export { guideToUse, transMultiSet };
+
+export {  guideToUse, transMultiSet };

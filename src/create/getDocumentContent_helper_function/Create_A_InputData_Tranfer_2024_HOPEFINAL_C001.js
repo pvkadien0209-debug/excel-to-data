@@ -56,6 +56,7 @@ function processArrayGetMap(mappingArray) {
   let resultIPA = [];
   let resultTB = [];
   let resultIF = [];
+  let resultHT = [];
   let resultOthers = [];
 
   input.forEach((element, i) => {
@@ -73,6 +74,8 @@ function processArrayGetMap(mappingArray) {
           resultTB.push(i);
         } else if (element.includes("IF") || element.includes("If")) {
           resultIF.push(i);
+        } else if (element.includes("HT")) {
+          resultHT.push(i);
         } else {
           resultOthers.push(i);
         }
@@ -80,7 +83,15 @@ function processArrayGetMap(mappingArray) {
     } catch (error) {}
   });
 
-  return [resultIF, resultHD, resultTB, resultOthers, resultTV, resultIPA];
+  return [
+    resultIF,
+    resultHD,
+    resultTB,
+    resultOthers,
+    resultTV,
+    resultIPA,
+    resultHT,
+  ];
 }
 
 function shuffleArray_inorder_of_type(charactor, typeSets) {
@@ -140,7 +151,7 @@ function transformInputArray(inputArray) {
 
   const mapping = processArrayGetMap(inputArray);
 
-  let res = [[], [], [], [], [], [], []];
+  let res = [[], [], [], [], [], [], [], []];
   inputArray.forEach((e) => {
     function getElements(indices) {
       return indices.map((index) => e[index]);
@@ -151,12 +162,14 @@ function transformInputArray(inputArray) {
     const resultOthers = getElements(mapping[3]);
     const resultTV = getElements(mapping[4]);
     const resultIPA = getElements(mapping[5]);
+    const resultHT = getElements(mapping[6]);
     res[0].push(resultIF);
     res[1].push(resultHD);
     res[2].push(resultTB);
     res[3].push(resultOthers);
     res[4].push(resultTV);
     res[5].push(resultIPA);
+    res[6].push(resultHT);
   });
 
   let IF = removeAllNullObjects(nextStepOutside(res[0]));
@@ -164,6 +177,7 @@ function transformInputArray(inputArray) {
   console.log(JSON.stringify(IF));
 
   let HD = removeAllNullObjects(nextStepOutside(res[1]));
+  let HT = removeAllNullObjects(nextStepOutside(res[6]));
   let TV = removeAllNullObjects(nextStepOutside(res[4]));
   let IP = removeAllNullObjects(nextStepOutside(res[5]));
   let TB = extractNonNullValuesByIndex(
@@ -270,6 +284,7 @@ function transformInputArray(inputArray) {
       TB: TB,
       TV: TV,
       IPA: IP,
+      HT: HT,
     },
   };
 }
@@ -278,8 +293,12 @@ function toSEOparce(name, IF) {
     return {
       seo: {
         metaTitle: name,
-        metaDescription: "Thực sử dụng các mẫu câu đơn giản để hỏi và trả lời.",
-        keywords: ["tiếng Anh A1", "hỏi và trả lời", "10.000 lượt nghe nói"],
+        metaDescription: "Rèn kĩ năng - thuộc kiến thức",
+        keywords: [
+          "thực hành giao tiếp",
+          "thực hành hội thoại",
+          "thực hành tiếng anh",
+        ],
       },
     };
     return JSON.parse(IF.IFdes);
@@ -974,11 +993,15 @@ function f_excel_after_unifileandNext_t_table_4_copy() {
   pushDataToScreen_02(replaceHDAll(res_no_HD, res_HD));
 }
 
+function Create_A_InputData_Tranfer_2024_HOPEFINAL_C001() {
+  pushDataToScreen(["Edit tại Create_A_InputData_Tranfer_2024_HOPEFINAL_C001"]);
+}
+
 export {
   guideToUse_C001,
   transMultiSet,
   f_excel_after_unifileandNext_t_table_4_copy,
-
+  Create_A_InputData_Tranfer_2024_HOPEFINAL_C001,
   // STEP_01_get_all_sentence_f_sreen_and_fetch_to_table_IDANDST,
   // STEP_02_f_table_IDANDST_then_A1_A2_to_table_HD_JSON,
   // STEP_3_get_TableHD_f_json_same_step_02,
