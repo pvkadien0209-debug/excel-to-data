@@ -337,50 +337,108 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
       alert("Không có dữ liệu để xử lý.");
       return;
     }
+
     let allData = [];
     let stt = 1;
     const invalidValues = ["NULL", "null", "NULLA", null, undefined, ""];
+
+    // Regex nhận diện code-01, code01, code_01, Code-1, TEXT-02, lang-3, ...
+    const reCode = /^code[-_]?0*(\d+)$/i;
+    const reText = /^text[-_]?0*(\d+)$/i;
+    const reLang = /^lang[-_]?0*(\d+)$/i;
+
     input.forEach((sheet, sheetIndex) => {
       if (!sheet || sheet.length === 0) return;
       let header = sheet[0];
-      let codeIndex = header.findIndex(
-        (col) => col && col.toLowerCase() === "code",
-      );
-      let textIndex = header.findIndex(
-        (col) => col && col.toLowerCase() === "text",
-      );
-      if (codeIndex === -1 || textIndex === -1) {
+      if (!header || header.length === 0) return;
+
+      // Gom các bộ (set) theo số thứ tự -01, -02, ...
+      let setsMap = {}; // { "1": {codeIndex, textIndex, langIndex}, "2": {...} }
+
+      header.forEach((col, colIndex) => {
+        if (!col) return;
+        let colStr = String(col).trim();
+
+        let mCode = colStr.match(reCode);
+        let mText = colStr.match(reText);
+        let mLang = colStr.match(reLang);
+
+        if (mCode) {
+          let num = mCode[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].codeIndex = colIndex;
+        } else if (mText) {
+          let num = mText[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].textIndex = colIndex;
+        } else if (mLang) {
+          let num = mLang[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].langIndex = colIndex;
+        }
+      });
+
+      // Lấy danh sách các bộ có đủ code + text, sắp xếp tăng dần theo số
+      let sortedSetNumbers = Object.keys(setsMap)
+        .filter(
+          (num) =>
+            setsMap[num].codeIndex !== undefined &&
+            setsMap[num].textIndex !== undefined,
+        )
+        .sort((a, b) => Number(a) - Number(b));
+
+      if (sortedSetNumbers.length === 0) {
         console.log(
-          `Sheet ${sheetIndex + 1}: Không tìm thấy cột code hoặc text`,
+          `Sheet ${sheetIndex + 1}: Không tìm thấy bộ cột code-XX/text-XX hợp lệ`,
         );
         return;
       }
+
       for (let rowIndex = 1; rowIndex < sheet.length; rowIndex++) {
         let row = sheet[rowIndex];
-        let codeValue = row[codeIndex];
-        let textValue = row[textIndex];
-        let isCodeValid = codeValue && !invalidValues.includes(codeValue);
-        let isTextValid = textValue && !invalidValues.includes(textValue);
-        if (isCodeValid && isTextValid) {
-          allData.push({
-            stt: stt++,
-            code: codeValue,
-            text: textValue,
-            sheet: sheetIndex + 1,
-            row: rowIndex + 1,
-          });
-        }
+        if (!row) continue;
+
+        sortedSetNumbers.forEach((setNum) => {
+          let { codeIndex, textIndex, langIndex } = setsMap[setNum];
+
+          let codeValue = row[codeIndex];
+          let textValue = row[textIndex];
+          let langValue = langIndex !== undefined ? row[langIndex] : undefined;
+
+          let isCodeValid = codeValue && !invalidValues.includes(codeValue);
+          let isTextValid = textValue && !invalidValues.includes(textValue);
+          let isLangValid = langValue && !invalidValues.includes(langValue);
+
+          if (isCodeValid && isTextValid) {
+            allData.push({
+              stt: stt++,
+              code: codeValue,
+              text: textValue,
+              lang: isLangValid ? langValue : null,
+              set: Number(setNum),
+              sheet: sheetIndex + 1,
+              row: rowIndex + 1,
+            });
+          }
+        });
       }
     });
+
     if (allData.length === 0) {
-      alert("Không tìm thấy dữ liệu code và text hợp lệ.");
+      alert(
+        "[x10],11,12,13,... [xxxCode-text-lang] [must:code-01-text-01-lang-01]|Không tìm thấy dữ liệu code và text hợp lệ.",
+      );
       return;
     }
+
     hienThiPopupCodeText(allData);
   } catch (error) {
-    console.log("Lỗi E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext");
+    console.log("Lỗi E_LayTatCaCodeVaText_toAudioCode_MultiSet");
     console.log(error);
-    alert("Có lỗi xảy ra: " + error.message);
+    alert(
+      "[x10],11,12,13,... [xxxCode-text-lang] [must:code-01-text-01-lang-01] |  Có lỗi xảy ra: " +
+        error.message,
+    );
   }
 }
 
