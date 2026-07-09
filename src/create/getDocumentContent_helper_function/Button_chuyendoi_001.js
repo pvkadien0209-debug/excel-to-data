@@ -342,10 +342,13 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
     let stt = 1;
     const invalidValues = ["NULL", "null", "NULLA", null, undefined, ""];
 
-    // Regex nhận diện code-01, code01, code_01, Code-1, TEXT-02, lang-3, ...
-    const reCode = /^code[-_]?0*(\d+)$/i;
-    const reText = /^text[-_]?0*(\d+)$/i;
-    const reLang = /^lang[-_]?0*(\d+)$/i;
+    // Chỉ nhận diện dạng liền, không dấu gạch: code01, text01, lang01, speedRate01, pitchShift01, volume01
+    const reCode = /^code0*(\d+)$/i;
+    const reText = /^text0*(\d+)$/i;
+    const reLang = /^lang0*(\d+)$/i;
+    const reSpeedRate = /^speedRate0*(\d+)$/i;
+    const rePitchShift = /^pitchShift0*(\d+)$/i;
+    const reVolume = /^volume0*(\d+)$/i;
 
     input.forEach((sheet, sheetIndex) => {
       if (!sheet || sheet.length === 0) return;
@@ -353,7 +356,7 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
       if (!header || header.length === 0) return;
 
       // Gom các bộ (set) theo số thứ tự -01, -02, ...
-      let setsMap = {}; // { "1": {codeIndex, textIndex, langIndex}, "2": {...} }
+      let setsMap = {}; // { "1": {codeIndex, textIndex, langIndex, speedRateIndex, pitchShiftIndex, volumeIndex}, "2": {...} }
 
       header.forEach((col, colIndex) => {
         if (!col) return;
@@ -362,6 +365,9 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
         let mCode = colStr.match(reCode);
         let mText = colStr.match(reText);
         let mLang = colStr.match(reLang);
+        let mSpeedRate = colStr.match(reSpeedRate);
+        let mPitchShift = colStr.match(rePitchShift);
+        let mVolume = colStr.match(reVolume);
 
         if (mCode) {
           let num = mCode[1];
@@ -375,6 +381,18 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
           let num = mLang[1];
           if (!setsMap[num]) setsMap[num] = {};
           setsMap[num].langIndex = colIndex;
+        } else if (mSpeedRate) {
+          let num = mSpeedRate[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].speedRateIndex = colIndex;
+        } else if (mPitchShift) {
+          let num = mPitchShift[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].pitchShiftIndex = colIndex;
+        } else if (mVolume) {
+          let num = mVolume[1];
+          if (!setsMap[num]) setsMap[num] = {};
+          setsMap[num].volumeIndex = colIndex;
         }
       });
 
@@ -399,15 +417,34 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
         if (!row) continue;
 
         sortedSetNumbers.forEach((setNum) => {
-          let { codeIndex, textIndex, langIndex } = setsMap[setNum];
+          let {
+            codeIndex,
+            textIndex,
+            langIndex,
+            speedRateIndex,
+            pitchShiftIndex,
+            volumeIndex,
+          } = setsMap[setNum];
 
           let codeValue = row[codeIndex];
           let textValue = row[textIndex];
           let langValue = langIndex !== undefined ? row[langIndex] : undefined;
+          let speedRateValue =
+            speedRateIndex !== undefined ? row[speedRateIndex] : undefined;
+          let pitchShiftValue =
+            pitchShiftIndex !== undefined ? row[pitchShiftIndex] : undefined;
+          let volumeValue =
+            volumeIndex !== undefined ? row[volumeIndex] : undefined;
 
           let isCodeValid = codeValue && !invalidValues.includes(codeValue);
           let isTextValid = textValue && !invalidValues.includes(textValue);
           let isLangValid = langValue && !invalidValues.includes(langValue);
+          let isSpeedRateValid =
+            speedRateValue && !invalidValues.includes(speedRateValue);
+          let isPitchShiftValid =
+            pitchShiftValue && !invalidValues.includes(pitchShiftValue);
+          let isVolumeValid =
+            volumeValue && !invalidValues.includes(volumeValue);
 
           if (isCodeValid && isTextValid) {
             allData.push({
@@ -415,6 +452,9 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
               code: codeValue,
               text: textValue,
               lang: isLangValid ? langValue : null,
+              speedRate: isSpeedRateValid ? speedRateValue : null,
+              pitchShift: isPitchShiftValid ? pitchShiftValue : null,
+              volume: isVolumeValid ? volumeValue : null,
               set: Number(setNum),
               sheet: sheetIndex + 1,
               row: rowIndex + 1,
