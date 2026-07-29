@@ -2,6 +2,7 @@ import $, { data } from "jquery";
 import { replace } from "react-router-dom";
 import peopleSets from "../dataCreate/peopleSets.json";
 import * as XLSX from "xlsx";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,6 +15,7 @@ function GetData() {
   }
   return data_get_from_RESID;
 }
+
 function GetDatabyid(id) {
   let data_get_from_RESID = [];
   try {
@@ -23,50 +25,7 @@ function GetDatabyid(id) {
   }
   return data_get_from_RESID;
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// ## ... ## : PHÉP TÍNH SỐ NGUYÊN NHÚNG TRONG GIÁ TRỊ x/y/z
-//
-// Trước khi dùng x/y/z để tra bảng (findValueByHDAndKey), nếu giá trị có chứa
-// ##biểu_thức## thì bóc biểu thức đó ra, tính kết quả (làm tròn về số nguyên),
-// rồi ghép ngược lại đúng vị trí trong chuỗi gốc (giữ nguyên phần text còn lại).
-//
-// Ví dụ: "HD-0##((2+1)%2)##"  →  biểu thức "((2+1)%2)" = 1  →  "HD-01"
-//        {x:A1,y:HD-0##((2+1)%2)##}  →  {x:A1,y:HD-01}
-// ─────────────────────────────────────────────────────────────────────────────
-function resolveHashCalc(str) {
-  if (!str || typeof str !== "string") return str;
-  if (!str.includes("##")) return str;
-  return str.replace(/##(.*?)##/g, (match, expr) => {
-    try {
-      // eslint-disable-next-line no-new-func
-      const result = Function(`"use strict"; return (${expr});`)();
-      const intResult = Math.trunc(Number(result));
-      if (Number.isNaN(intResult)) return match;
-      return String(intResult);
-    } catch (error) {
-      console.error(
-        `Lỗi tính toán biểu thức ##...## : "${expr}" (trong chuỗi gốc: "${str}"). ` +
-          `Có thể do biến/token bên trong (vd tên loop-var) chưa được thay bằng giá trị số trước khi tính.`,
-        error,
-      );
-      return match; // giữ nguyên nếu lỗi để dễ debug
-    }
-  });
-}
-/**
- * Áp dụng resolveHashCalc cho các field x, y, z của 1 object (nếu có).
- * Gọi hàm này TRƯỚC mọi lời gọi findValueByHDAndKey, theo logic thay thế cũ
- * (split/join) — chỉ khác là x/y/z đã được "bóc ##...## và tính" trước.
- */
-function resolveHashCalcOnObject(obj) {
-  if (!obj) return obj;
-  ["x", "y", "z"].forEach((k) => {
-    if (obj[k] !== undefined && obj[k] !== null) {
-      obj[k] = resolveHashCalc(String(obj[k]));
-    }
-  });
-  return obj;
-}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // (1) ĐỐI TƯỢNG ĐƠN: {x:A2, y:HD-03}  →  thay thế 1:1, không sinh thêm dòng
 //
@@ -80,10 +39,8 @@ function resolveHashCalcOnObject(obj) {
 //
 // Hàm extractObjectsFromString chỉ match {key:val,...} PHẲNG (không có [] bên trong).
 // Regex (?!data:\[) đảm bảo bỏ qua {data:[...], group:...} để tránh xung đột.
-//
-// MỚI: nếu x/y/z chứa ##biểu_thức## thì được resolveHashCalc bóc + tính trước
-// khi object được trả về, để findValueByHDAndKey tra đúng giá trị.
 // ─────────────────────────────────────────────────────────────────────────────
+
 function extractObjectsFromString(str) {
   const regex = /\{(?!data:\s*\[)[^}]+\}/g;
   const matches = str.match(regex);
@@ -99,12 +56,11 @@ function extractObjectsFromString(str) {
             obj[key] = value;
           }
         });
-        // Bóc và tính các phép ##...## trong x/y/z trước khi dùng để tra bảng
-        resolveHashCalcOnObject(obj);
         return obj;
       })
     : [];
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // (2) ĐỐI TƯỢNG NHIỀU GIÁ TRỊ: {data:[{x:...,y:...},...], group:TÊN}
 //
@@ -127,6 +83,7 @@ function extractObjectsFromString(str) {
 //     row2: 02-aw-01="Table for three.|..." 02-submit-01="Three people-"
 //     row3: 02-aw-01="Table for four.|..." 02-submit-01="Four people-"
 // ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Parse {data:[{x:...,y:...},...], group:NAME} từ một chuỗi field.
  *
@@ -136,9 +93,6 @@ function extractObjectsFromString(str) {
  *   \]\s*,?\s*group:\s*  → đóng ] rồi group:
  *   ([^\s}]+)      → tên group (A1, A2, ...)
  *   \s*\}          → đóng }
- *
- * MỚI: mỗi item {x,y,z} bên trong data:[...] cũng được resolveHashCalc bóc
- * và tính ##biểu_thức## trước khi item được dùng để tra bảng.
  *
  * @param {string} str - Chuỗi field value
  * @returns {{ origin:string, data:Object[], group:string }[]}
@@ -153,6 +107,7 @@ function extractMultiValuePatterns(str) {
     const origin = match[0]; // Toàn bộ chuỗi khớp → dùng để split/replace
     const dataStr = match[1]; // Phần bên trong data:[...]
     const groupVal = match[2].trim(); // Tên group: A1, A2, ...
+
     // Parse từng item {x:..., y:..., z?:...} bên trong data:[...]
     const itemRegex = /\{([^}]+)\}/g;
     const items = [];
@@ -167,8 +122,6 @@ function extractMultiValuePatterns(str) {
           if (k && v) itemObj[k] = v;
         }
       });
-      // Bóc và tính các phép ##...## trong x/y/z trước khi tra bảng
-      resolveHashCalcOnObject(itemObj);
       items.push(itemObj);
     }
     if (items.length > 0) {
@@ -177,6 +130,7 @@ function extractMultiValuePatterns(str) {
   }
   return results;
 }
+
 /**
  * Mở rộng các row chứa {data:[...], group:NAME} thành nhiều row.
  *
@@ -192,9 +146,11 @@ function extractMultiValuePatterns(str) {
  */
 function expandGroupPatterns(rows, data_lookup) {
   const result = [];
+
   rows.forEach((row) => {
     // ── Bước 1: Thu thập tất cả patterns trong row ────────────────────────
     const allPatterns = []; // [{fieldKey, origin, group, resolvedValues}]
+
     Object.keys(row).forEach((fieldKey) => {
       const val = row[fieldKey];
       if (!val || typeof val !== "string") return;
@@ -205,7 +161,6 @@ function expandGroupPatterns(rows, data_lookup) {
           origin: p.origin,
           group: p.group,
           // Tra bảng ngay để lấy giá trị thực cho mỗi item
-          // (item.x/y/z đã được resolveHashCalc xử lý ##...## bên trong extractMultiValuePatterns)
           resolvedValues: p.data.map(
             (item) =>
               findValueByHDAndKey(data_lookup, item.x, item.y, item.z) ||
@@ -214,11 +169,13 @@ function expandGroupPatterns(rows, data_lookup) {
         });
       });
     });
+
     // Không có pattern → giữ nguyên row
     if (allPatterns.length === 0) {
       result.push(row);
       return;
     }
+
     // ── Bước 2: Nhóm theo group name ──────────────────────────────────────
     // byGroup = { "A1": [...patterns], "A2": [...patterns], ... }
     const byGroup = {};
@@ -226,6 +183,7 @@ function expandGroupPatterns(rows, data_lookup) {
       if (!byGroup[p.group]) byGroup[p.group] = [];
       byGroup[p.group].push(p);
     });
+
     // ── Bước 3: Xây dựng các "trục" (axes) ───────────────────────────────
     // Mỗi trục = mảng các "slot-set" (1 slot-set = 1 bước trong tổ hợp)
     // Slot-set = [{fieldKey, origin, value}, ...] để apply cùng lúc
@@ -233,11 +191,13 @@ function expandGroupPatterns(rows, data_lookup) {
     // • Cùng group → ZIP: index i của tất cả patterns trong group đi cùng nhau
     // • Khác group → Cartesian: mỗi group = 1 trục độc lập
     const axes = [];
+
     Object.keys(byGroup).forEach((groupName) => {
       const groupPatterns = byGroup[groupName];
       const maxLen = Math.max(
         ...groupPatterns.map((p) => p.resolvedValues.length),
       );
+
       // Trục này có maxLen slot-set, mỗi slot-set gom tất cả field cùng group tại index i
       const axis = [];
       for (let i = 0; i < maxLen; i++) {
@@ -251,6 +211,7 @@ function expandGroupPatterns(rows, data_lookup) {
       }
       axes.push(axis);
     });
+
     // ── Bước 4: Cartesian product giữa các trục ───────────────────────────
     // combinations[k] = mảng phẳng các slot cho tổ hợp thứ k
     let combinations = [[]];
@@ -263,6 +224,7 @@ function expandGroupPatterns(rows, data_lookup) {
       });
       combinations = newCombos;
     });
+
     // ── Bước 5: Áp dụng từng tổ hợp → sinh row mới ───────────────────────
     combinations.forEach((slots) => {
       const newRow = Object.assign({}, row);
@@ -276,11 +238,14 @@ function expandGroupPatterns(rows, data_lookup) {
       result.push(newRow);
     });
   });
+
   return result;
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CORE FUNCTIONS  (FN_01 và FN_A1 đều thêm expandGroupPatterns giữa res03→res04)
 // ─────────────────────────────────────────────────────────────────────────────
+
 function FN_01() {
   $("#ResID04").text(`
     (1) Lấy tất cả Object có Type là không có HD.
@@ -307,8 +272,6 @@ function FN_01() {
         const input = e[e1];
         let res_index = JSON.parse(input);
         res_index.forEach((e2) => {
-          // Bóc và tính các phép ##...## trong x/y/z trước khi tra bảng
-          resolveHashCalcOnObject(e2);
           e2.newValue = e2.index
             ? e2.index
             : findValueByHDAndKey(data_02, e2.x, e2.y, e2.z);
@@ -323,6 +286,7 @@ function FN_01() {
       }
     });
   });
+
   let res_01 = [];
   res.forEach((e) => {
     let indexLoopInput = e.getIndexInTable;
@@ -330,21 +294,25 @@ function FN_01() {
     let strOfElement = JSON.stringify(e);
     res_01.push({ indexLoopInput, strOfElement });
   });
+
   let res_02 = [];
   res_01.forEach((e) => {
     res_02 = res_02.concat(
       put_data_in_loop_total(e.indexLoopInput, 0, [e.strOfElement]),
     );
   });
+
   let res03 = [];
   res_02.forEach((e) => {
     res03.push(JSON.parse(e));
   });
+
   // ── MỚI: Mở rộng {data:[...], group:NAME} thành các tổ hợp đầy đủ ──────
   // • Cùng group name → ZIP theo index (field cùng group đồng bộ index)
   // • Khác group name → CARTESIAN PRODUCT giữa các trục
   let res03_expanded = expandGroupPatterns(res03, data_02);
   // ─────────────────────────────────────────────────────────────────────────
+
   let res04 = [];
   res03_expanded.forEach((e) => {
     let obj = {};
@@ -363,8 +331,6 @@ function FN_01() {
         let condition = extractObjectsFromString(e[e1]);
         obj[key].condition = condition;
         condition.forEach((e) => {
-          // e.x / e.y / e.z đã được resolveHashCalc bóc ##...## bên trong
-          // extractObjectsFromString, trước khi tra bảng ở đây.
           let lookupValue = findValueByHDAndKey(data_02, e.x, e.y, e.z);
           let yesValue = e.yes || lookupValue || "ERROR";
           let noValue = e.no || "ERROR";
@@ -386,6 +352,7 @@ function FN_01() {
     });
     res04.push(obj);
   });
+
   let res05 = [];
   res04.forEach((e) => {
     let keySets = Object.keys(e);
@@ -395,6 +362,7 @@ function FN_01() {
     });
     res05.push(JSON.stringify(obj));
   });
+
   let res06 = removeDuplicates(res05);
   let res07 = [];
   res06.forEach((e) => {
@@ -405,9 +373,11 @@ function FN_01() {
     e.name = peopleSets[i % 10].name;
     e.gender = peopleSets[i % 10].gender;
   });
+
   createTableFromArray("ResID05", res07);
   $("#ResID02").text(JSON.stringify(res07));
 }
+
 function FN_A1(id) {
   const data = GetDatabyid(id);
   const data_02 = GetDatabyid(id);
@@ -430,8 +400,6 @@ function FN_A1(id) {
         const input = e[e1];
         let res_index = JSON.parse(input);
         res_index.forEach((e2) => {
-          // Bóc và tính các phép ##...## trong x/y/z trước khi tra bảng
-          resolveHashCalcOnObject(e2);
           e2.newValue = e2.index
             ? e2.index
             : findValueByHDAndKey(data_02, e2.x, e2.y, e2.z);
@@ -443,6 +411,7 @@ function FN_A1(id) {
       }
     });
   });
+
   let res_01 = [];
   res.forEach((e) => {
     let indexLoopInput = e.getIndexInTable;
@@ -450,19 +419,23 @@ function FN_A1(id) {
     let strOfElement = JSON.stringify(e);
     res_01.push({ indexLoopInput, strOfElement });
   });
+
   let res_02 = [];
   res_01.forEach((e) => {
     res_02 = res_02.concat(
       put_data_in_loop_total(e.indexLoopInput, 0, [e.strOfElement]),
     );
   });
+
   let res03 = [];
   res_02.forEach((e) => {
     res03.push(JSON.parse(e));
   });
+
   // ── MỚI: Mở rộng {data:[...], group:NAME} ───────────────────────────────
   let res03_expanded = expandGroupPatterns(res03, data_02);
   // ─────────────────────────────────────────────────────────────────────────
+
   let res04 = [];
   res03_expanded.forEach((e) => {
     let obj = {};
@@ -500,6 +473,7 @@ function FN_A1(id) {
     });
     res04.push(obj);
   });
+
   let res05 = [];
   res04.forEach((e) => {
     let keySets = Object.keys(e);
@@ -509,6 +483,7 @@ function FN_A1(id) {
     });
     res05.push(JSON.stringify(obj));
   });
+
   let res06 = removeDuplicates(res05);
   let res07 = [];
   res06.forEach((e) => {
@@ -519,11 +494,14 @@ function FN_A1(id) {
     e.name = peopleSets[i % 10].name;
     e.gender = peopleSets[i % 10].gender;
   });
+
   return res07;
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UNCHANGED FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
 function FN_ZZZZA1() {
   const data = GetData()[1];
   let SODONGEXCELCANLAY = 12;
@@ -542,6 +520,7 @@ function FN_ZZZZA1() {
   $("#ResID03").text(JSON.stringify(GetData()[0]));
   $("#ResID04").text(JSON.stringify(GetData()[2]));
 }
+
 function FN_ZZZZA1_HD01() {
   let data_ZZZZA1 = JSON.parse($("#ResID02").text());
   let Data_hd = JSON.parse($("#ResID03").text());
@@ -599,6 +578,7 @@ function FN_ZZZZA1_HD01() {
   exportToExcel(res.concat(res_02));
   console.log(JSON.stringify(res));
 }
+
 const exportToExcel = (data) => {
   const wb = XLSX.utils.book_new();
   data.forEach((e, i) => {
@@ -607,6 +587,7 @@ const exportToExcel = (data) => {
   });
   XLSX.writeFile(wb, "B_FILE_01.xlsx");
 };
+
 const ChuyenDoi_Buoc_1 = {
   HuongDanSoureCodeToEditRs4: () => {
     $("#ResID04").text(
@@ -620,9 +601,11 @@ const ChuyenDoi_Buoc_1 = {
   DaCo_ZZZZA1_GHEP_HD01_exportFileExcel: () => FN_ZZZZA1_HD01(),
 };
 export { ChuyenDoi_Buoc_1 };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILITY FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
 function findValueByHDAndKey(arr, x, y, z) {
   const result = arr.find((e) => e["HD-Bmark"] === x);
   if (z && result) {
@@ -634,6 +617,7 @@ function findValueByHDAndKey(arr, x, y, z) {
   }
   return result ? result[y] : undefined;
 }
+
 function transformArrayToNameValueSet(arr) {
   const grouped = arr.reduce((acc, { name, newValue }) => {
     const existingGroup = acc.find((group) => group.name === name);
@@ -646,22 +630,9 @@ function transformArrayToNameValueSet(arr) {
   }, []);
   return grouped;
 }
+
 function put_data_in_loop_total(setTotal, n, strOfElement) {
   let res = [];
-  if (n === 0) {
-    // Sắp xếp các loop-var theo ĐỘ DÀI TÊN GIẢM DẦN trước khi bắt đầu thay thế.
-    //
-    // Lý do: thay thế dùng split/join trên toàn chuỗi JSON (không có ranh giới
-    // từ). Nếu 1 tên NGẮN (vd "A01") tình cờ là chuỗi con của 1 tên DÀI hơn
-    // (vd "CMD-A01-A") và được thay TRƯỚC, nó sẽ phá vỡ tên dài giữa chừng →
-    // tên dài không bao giờ khớp trọn vẹn nữa → còn sót chữ trong chuỗi →
-    // các phép tính ##...## dùng biến đó (vd ##(CMD-A01-A%10)##) sẽ eval lỗi
-    // (ReferenceError) vì JS hiểu dấu "-" còn lại là phép trừ.
-    //
-    // Xử lý tên dài trước đảm bảo "CMD-A01-A" được thay đúng giá trị của nó
-    // trước khi "A01" (nếu có, thuộc 1 loop-var khác) có cơ hội thay nhầm.
-    setTotal = [...setTotal].sort((a, b) => b.name.length - a.name.length);
-  }
   if (n >= setTotal.length) {
     return strOfElement;
   }
@@ -674,9 +645,11 @@ function put_data_in_loop_total(setTotal, n, strOfElement) {
   });
   return put_data_in_loop_total(setTotal, n + 1, res);
 }
+
 function removeDuplicates(strings) {
   return [...new Set(strings)];
 }
+
 function createTableFromArray(id, array) {
   const keys = Object.keys(array[0]);
   let table = $("#" + id);
@@ -697,6 +670,7 @@ function createTableFromArray(id, array) {
     table.append(row);
   });
 }
+
 function copyContent(id) {
   var content = $("#" + id).text();
   navigator.clipboard
@@ -708,6 +682,7 @@ function copyContent(id) {
       alert("Có lỗi xảy ra khi sao chép: " + error);
     });
 }
+
 function nextStepOutside(rows) {
   try {
     if (rows.length === 0) return [];

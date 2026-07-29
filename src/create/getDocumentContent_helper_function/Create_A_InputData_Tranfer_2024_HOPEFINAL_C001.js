@@ -1002,15 +1002,16 @@ function f_excel_after_unifileandNext_t_table_4_copy() {
   pushDataToScreen_02(replaceHDAll(res_no_HD, res_HD));
 }
 
-function Create_A_InputData_Tranfer_2024_HOPEFINAL_C001() {
+function SoureCodeToEdit() {
   pushDataToScreen(["Edit tại Create_A_InputData_Tranfer_2024_HOPEFINAL_C001"]);
+  alert("Edit tại Create_A_InputData_Tranfer_2024_HOPEFINAL_C001");
 }
 
 export {
   guideToUse_C001,
   transMultiSet,
   f_excel_after_unifileandNext_t_table_4_copy,
-  Create_A_InputData_Tranfer_2024_HOPEFINAL_C001,
+  SoureCodeToEdit,
   // STEP_01_get_all_sentence_f_sreen_and_fetch_to_table_IDANDST,
   // STEP_02_f_table_IDANDST_then_A1_A2_to_table_HD_JSON,
   // STEP_3_get_TableHD_f_json_same_step_02,

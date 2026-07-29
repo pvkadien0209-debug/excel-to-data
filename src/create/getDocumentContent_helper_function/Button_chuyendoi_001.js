@@ -662,12 +662,12 @@ function copyToClipboard(text) {
   document.body.removeChild(tempTextArea);
 }
 
-function HD_Button_chuyendoi_001() {
+function SoureCodeToEdit() {
   alert("Edit tại Button_chuyendoi_001");
 }
 
 export {
-  HD_Button_chuyendoi_001,
+  SoureCodeToEdit,
   A_Unifile_Outside,
   B_NextStep_OUTSIDE,
   C_NextStep_DontUnifile,
