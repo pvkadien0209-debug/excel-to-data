@@ -165,7 +165,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
   for (let i = 1; i <= soLuongSheet; i++) {
     headerSheets += `<th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Sheet ${i}</th>`;
   }
-
   let rowsHTML = ketQua
     .map((item, index) => {
       let sheetsHTML = item.sheets
@@ -217,6 +216,13 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
             border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
             📋 Copy Bảng
           </button>
+          <!-- ★ NÚT COPY BẢNG XOAY NGANG MỚI ★ -->
+          <button id="btnCopyTableXoayNgang" style="
+            padding: 10px 20px; background: #7b1fa2; color: white;
+            border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;
+            font-weight: bold;">
+            🔄 Copy Bảng (Xoay ngang)
+          </button>
           <button id="btnCopyJSON" style="
             padding: 10px 20px; background: #2196F3; color: white;
             border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
@@ -260,7 +266,7 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
 
   $("body").append(popupHTML);
 
-  /* Copy Bảng */
+  /* Copy Bảng (dạng gốc: hàng = ADD_, cột = Sheet) */
   $("#btnCopyTable").click(function () {
     try {
       let textToCopy = "ADD_...";
@@ -283,6 +289,38 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
     }
   });
 
+  /* ★ Copy Bảng (Xoay ngang): hàng = Sheet, cột = ADD_... ★ */
+  $("#btnCopyTableXoayNgang").click(function () {
+    try {
+      // Hàng tiêu đề: ô đầu để trống (hoặc nhãn), sau đó là danh sách các ADD_...
+      let textToCopy = "Sheet\\ADD";
+      ketQua.forEach((item) => {
+        textToCopy += `\t${item.add}`;
+      });
+      textToCopy += "\n";
+
+      // Mỗi hàng tương ứng với 1 Sheet, các cột là giá trị của từng ADD_... trong sheet đó
+      for (let sheetIdx = 0; sheetIdx < soLuongSheet; sheetIdx++) {
+        textToCopy += `Sheet ${sheetIdx + 1}`;
+        ketQua.forEach((item) => {
+          let value = item.sheets[sheetIdx] || "";
+          if (value === "NULL" || value === "null") value = "NULL";
+          textToCopy += `\t${value}`;
+        });
+        textToCopy += "\n";
+      }
+
+      copyToClipboard(textToCopy);
+      $(this).text("✅ Đã Copy (Xoay ngang)!");
+      setTimeout(
+        () => $("#btnCopyTableXoayNgang").text("🔄 Copy Bảng (Xoay ngang)"),
+        2000,
+      );
+    } catch (error) {
+      alert("Lỗi khi copy bảng xoay ngang: " + error.message);
+    }
+  });
+
   /* Copy JSON */
   $("#btnCopyJSON").click(function () {
     try {
@@ -300,7 +338,6 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
       // Hàng header
       let headerRow = ["ADD_..."];
       for (let i = 1; i <= soLuongSheet; i++) headerRow.push(`Sheet ${i}`);
-
       // Các hàng dữ liệu
       let dataRows = ketQua.map((item) => {
         let row = [item.add];
@@ -312,9 +349,7 @@ function hienThiPopupKetQua(ketQua, soLuongSheet) {
         });
         return row;
       });
-
       downloadAsExcel([headerRow, ...dataRows], "ket_qua_D.xlsx");
-
       $(this).text("✅ Đã xuất Excel!");
       setTimeout(() => $("#btnDownloadExcelD").text("⬇ Download Excel"), 2000);
     } catch (error) {
@@ -337,11 +372,9 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
       alert("Không có dữ liệu để xử lý.");
       return;
     }
-
     let allData = [];
     let stt = 1;
     const invalidValues = ["NULL", "null", "NULLA", null, undefined, ""];
-
     // Chỉ nhận diện dạng liền, không dấu gạch: code01, text01, lang01, speedRate01, pitchShift01, volume01
     const reCode = /^code0*(\d+)$/i;
     const reText = /^text0*(\d+)$/i;
@@ -349,26 +382,21 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
     const reSpeedRate = /^speedRate0*(\d+)$/i;
     const rePitchShift = /^pitchShift0*(\d+)$/i;
     const reVolume = /^volume0*(\d+)$/i;
-
     input.forEach((sheet, sheetIndex) => {
       if (!sheet || sheet.length === 0) return;
       let header = sheet[0];
       if (!header || header.length === 0) return;
-
       // Gom các bộ (set) theo số thứ tự -01, -02, ...
       let setsMap = {}; // { "1": {codeIndex, textIndex, langIndex, speedRateIndex, pitchShiftIndex, volumeIndex}, "2": {...} }
-
       header.forEach((col, colIndex) => {
         if (!col) return;
         let colStr = String(col).trim();
-
         let mCode = colStr.match(reCode);
         let mText = colStr.match(reText);
         let mLang = colStr.match(reLang);
         let mSpeedRate = colStr.match(reSpeedRate);
         let mPitchShift = colStr.match(rePitchShift);
         let mVolume = colStr.match(reVolume);
-
         if (mCode) {
           let num = mCode[1];
           if (!setsMap[num]) setsMap[num] = {};
@@ -395,7 +423,6 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
           setsMap[num].volumeIndex = colIndex;
         }
       });
-
       // Lấy danh sách các bộ có đủ code + text, sắp xếp tăng dần theo số
       let sortedSetNumbers = Object.keys(setsMap)
         .filter(
@@ -404,18 +431,15 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
             setsMap[num].textIndex !== undefined,
         )
         .sort((a, b) => Number(a) - Number(b));
-
       if (sortedSetNumbers.length === 0) {
         console.log(
           `Sheet ${sheetIndex + 1}: Không tìm thấy bộ cột code-XX/text-XX hợp lệ`,
         );
         return;
       }
-
       for (let rowIndex = 1; rowIndex < sheet.length; rowIndex++) {
         let row = sheet[rowIndex];
         if (!row) continue;
-
         sortedSetNumbers.forEach((setNum) => {
           let {
             codeIndex,
@@ -425,7 +449,6 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
             pitchShiftIndex,
             volumeIndex,
           } = setsMap[setNum];
-
           let codeValue = row[codeIndex];
           let textValue = row[textIndex];
           let langValue = langIndex !== undefined ? row[langIndex] : undefined;
@@ -435,7 +458,6 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
             pitchShiftIndex !== undefined ? row[pitchShiftIndex] : undefined;
           let volumeValue =
             volumeIndex !== undefined ? row[volumeIndex] : undefined;
-
           let isCodeValid = codeValue && !invalidValues.includes(codeValue);
           let isTextValid = textValue && !invalidValues.includes(textValue);
           let isLangValid = langValue && !invalidValues.includes(langValue);
@@ -445,7 +467,6 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
             pitchShiftValue && !invalidValues.includes(pitchShiftValue);
           let isVolumeValid =
             volumeValue && !invalidValues.includes(volumeValue);
-
           if (isCodeValid && isTextValid) {
             allData.push({
               stt: stt++,
@@ -463,14 +484,12 @@ function E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext() {
         });
       }
     });
-
     if (allData.length === 0) {
       alert(
         "[x10],11,12,13,... [xxxCode-text-lang] [must:code-01-text-01-lang-01]|Không tìm thấy dữ liệu code và text hợp lệ.",
       );
       return;
     }
-
     hienThiPopupCodeText(allData);
   } catch (error) {
     console.log("Lỗi E_LayTatCaCodeVaText_toAudioCode_MultiSet");
