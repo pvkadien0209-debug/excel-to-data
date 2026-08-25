@@ -49,53 +49,53 @@ function unifyOutside(input) {
   }
 }
 
-/**
- * Sinh mapping (mảng chỉ số cột) cho từng tên trong nameSets, dựa trên chuỗi
- * chứa trong header (mappingArray[0]).
- *
- * @param {Array} mappingArray - dữ liệu gốc, dùng dòng đầu tiên làm header
- * @param {string[]} nameSets - danh sách tên, PHẢI cùng thứ tự với nameSets
- *                               dùng trong transformInputArray. "Others" (nếu có)
- *                               sẽ nhận mọi phần tử không khớp tên nào khác.
- * @returns {Array[]} mảng chỉ số theo đúng thứ tự nameSets
- */
-function processArrayGetMap(mappingArray, nameSets) {
+function processArrayGetMap(mappingArray) {
   const input = mappingArray[0];
-  let res = nameSets.map(() => []);
-  const othersIdx = nameSets.indexOf("Others");
+  let resultHD = [];
+  let resultTV = [];
+  let resultIPA = [];
+  let resultTB = [];
+  let resultIF = [];
+  let resultHT = [];
+  let resultMC = [];
+  let resultOthers = [];
 
   input.forEach((element, i) => {
     try {
-      if (element === null) return;
-      if (element.includes("QS")) return; // bỏ qua, không thuộc nhóm nào
-      if (element.includes("HD-B")) return; // bỏ qua, không thuộc nhóm nào
-
-      // Tìm tên đầu tiên trong nameSets khớp với element (theo đúng thứ tự ưu tiên của nameSets)
-      let matchedIdx = -1;
-      for (let idx = 0; idx < nameSets.length; idx++) {
-        const name = nameSets[idx];
-        if (name === "Others") continue; // "Others" là fallback, xử lý sau cùng
-        if (name === "IF") {
-          // Giữ hành vi cũ: IF khớp cả "IF" và "If"
-          if (element.includes("IF") || element.includes("If")) {
-            matchedIdx = idx;
-            break;
-          }
-        } else if (element.includes(name)) {
-          matchedIdx = idx;
-          break;
+      if (element !== null) {
+        if (element.includes("QS")) {
+        } else if (element.includes("HD-B")) {
+        } else if (element.includes("HD")) {
+          resultHD.push(i);
+        } else if (element.includes("TV")) {
+          resultTV.push(i);
+        } else if (element.includes("IP")) {
+          resultIPA.push(i);
+        } else if (element.includes("TB")) {
+          resultTB.push(i);
+        } else if (element.includes("IF") || element.includes("If")) {
+          resultIF.push(i);
+        } else if (element.includes("HT")) {
+          resultHT.push(i);
+        } else if (element.includes("MC")) {
+          resultMC.push(i);
+        } else {
+          resultOthers.push(i);
         }
-      }
-
-      if (matchedIdx !== -1) {
-        res[matchedIdx].push(i);
-      } else if (othersIdx !== -1) {
-        res[othersIdx].push(i);
       }
     } catch (error) {}
   });
 
-  return res;
+  return [
+    resultIF,
+    resultHD,
+    resultTB,
+    resultOthers,
+    resultTV,
+    resultIPA,
+    resultHT,
+    resultMC,
+  ];
 }
 
 function shuffleArray_inorder_of_type(charactor, typeSets) {
@@ -152,12 +152,12 @@ function shuffleArray(array) {
 
 function transformInputArray(inputArray) {
   if (inputArray.length === 0) return;
-  let nameSets = ["IF", "HD", "TB", "Others", "TV", "IPA", "HT", "MC"];
-  const mapping = processArrayGetMap(inputArray, nameSets);
 
-  // Khởi tạo res tự động theo số lượng nameSets (thay cho push cứng 8 lần)
+  const mapping = processArrayGetMap(inputArray);
+  let nameSets = ["IF", "HD", "TB", "Others", "TV", "IPA", "HT", "MC"];
+
   let res = [];
-  nameSets.forEach(() => {
+  namesSets.forEach(() => {
     res.push([]);
   });
 
@@ -165,34 +165,42 @@ function transformInputArray(inputArray) {
     function getElements(indices) {
       return indices.map((index) => e[index]);
     }
-    // Build res[idx] tự động theo nameSets/mapping, không cần khai báo resultIF, resultHD... thủ công
-    nameSets.forEach((name, idx) => {
-      res[idx].push(getElements(mapping[idx]));
-    });
+
+    const resultIF = getElements(mapping[0]);
+    const resultHD = getElements(mapping[1]);
+    const resultTB = getElements(mapping[2]);
+    const resultOthers = getElements(mapping[3]);
+    const resultTV = getElements(mapping[4]);
+    const resultIPA = getElements(mapping[5]);
+    const resultHT = getElements(mapping[6]);
+    const resultMC = getElements(mapping[7]);
+
+    res[0].push(resultIF);
+    res[1].push(resultHD);
+    res[2].push(resultTB);
+    res[3].push(resultOthers);
+    res[4].push(resultTV);
+    res[5].push(resultIPA);
+    res[6].push(resultHT);
+    res[7].push(resultMC);
   });
 
-  // Transform riêng cho từng tên đặc biệt. Tên nào không khai báo ở đây
-  // sẽ tự dùng defaultTransform -> thêm tên mới vào nameSets là tự chạy được luôn.
-  const customTransforms = {
-    TB: (arr) =>
-      extractNonNullValuesByIndex(removeAllNullObjects(nextStepOutside(arr))),
-    Others: (arr) => AllConvertData(nextStepOutside(arr)),
-  };
-  const defaultTransform = (arr) => removeAllNullObjects(nextStepOutside(arr));
+  let IF = removeAllNullObjects(nextStepOutside(res[0]));
+  let HD = removeAllNullObjects(nextStepOutside(res[1]));
+  let HT = removeAllNullObjects(nextStepOutside(res[6]));
+  let MC = removeAllNullObjects(nextStepOutside(res[7]));
+  let TV = removeAllNullObjects(nextStepOutside(res[4]));
+  let IP = removeAllNullObjects(nextStepOutside(res[5]));
 
-  // Áp transform cho từng tên trong nameSets, gom vào 1 object tra cứu theo tên
-  let dataByName = {};
-  nameSets.forEach((name, idx) => {
-    const transform = customTransforms[name] || defaultTransform;
-    dataByName[name] = transform(res[idx]);
-  });
+  let TB = extractNonNullValuesByIndex(
+    removeAllNullObjects(nextStepOutside(res[2])),
+  );
 
-  let IF = dataByName["IF"];
-  let charactor = dataByName["Others"];
+  let charactor = AllConvertData(nextStepOutside(res[3]));
 
-  let SEOParce = res[nameSets.indexOf("TV")][0];
+  let SEOParce = res[4][0];
   try {
-    SEOParce = JSON.parse(res[nameSets.indexOf("TV")][0]);
+    SEOParce = JSON.parse(res[4][0]);
   } catch (error) {}
 
   let get_unique_listenSets_a_typeSets = extractAndConcat(charactor);
@@ -207,12 +215,14 @@ function transformInputArray(inputArray) {
       if (character.type) {
         uniqueSet_type.add(character.type);
       }
+
       if (character.data) {
         // Add `fsp` if it exists
         if (character.fsp) {
           countAllSentece.push(character.fsp);
           uniqueSet.add(character.type + "_" + character.fsp);
         }
+
         // Iterate through `data` array
         character.data.forEach((item) => {
           // Add `qs` elements if they exist
@@ -222,6 +232,7 @@ function transformInputArray(inputArray) {
               uniqueSet.add(character.type + "_" + question);
             });
           }
+
           // Add `aw` elements if they exist
           if (item.aw) {
             item.aw.forEach((answer) => {
@@ -232,6 +243,7 @@ function transformInputArray(inputArray) {
         });
       }
     });
+
     return [Array.from(uniqueSet), Array.from(uniqueSet_type)]; // Convert Set to Array for output
   }
 
@@ -256,6 +268,7 @@ function transformInputArray(inputArray) {
   //     } catch (error) {}
   //   }
   // });
+
   let id_f_excel_to_total_form = "thuc-hanh-hoc-noi-dung";
   let name_f_excel_to_total_form = "Thực hành nội dung";
   try {
@@ -273,25 +286,26 @@ function transformInputArray(inputArray) {
   } catch (error) {}
   /////////////THEM MỚI ĐỠ PHẢI THÊM YES NO WRONG
 
-  // Build HDTB tự động từ dataByName: lấy hết các tên trong nameSets,
-  // trừ "IF" (xử lý riêng qua toOUTSeo) và "Others" (đã tách ra thành `charactor`).
-  // Thêm tên mới vào nameSets (vd "H0", "HE", "HDD") sẽ tự động xuất hiện ở đây.
-  let HDTB = { IF: toOUTSeo(IF[0]), IP: dataByName["IPA"] };
-  nameSets.forEach((name) => {
-    if (name === "IF" || name === "Others" || name === "HD" || name === "IPA")
-      return;
-    HDTB[name] = dataByName[name];
-  });
-  HDTB["HD"] = findandDoRandom(dataByName["HD"]);
   return {
     id: id_f_excel_to_total_form,
     charactor: charactor,
     ListenList,
     typeSets,
     SEO: toSEOparce(name_f_excel_to_total_form, IF),
-    HDTB,
+    HDTB: {
+      IF: toOUTSeo(IF[0]),
+      HD: HD,
+      TB: TB,
+      TV: TV,
+      IPA: IP,
+      HT: HT,
+      MC: MC,
+    },
   };
 }
+
+
+
 
 function toSEOparce(name, IF) {
   try {
@@ -1328,43 +1342,4 @@ function removeVietnameseAccents(str) {
     .split("--")
     .join("-") // Loại bỏ các ký tự đặc biệt và dấu câu, giữ lại khoảng trắng
     .toLowerCase(); // Chuyển tất cả thành chữ thường
-}
-/**
- * Duyệt từng obj trong arr, kiểm tra element 0 (giá trị đầu tiên theo thứ tự key)
- * có chứa "[RANDOM:1,2,3,...]" hay không.
- * Nếu có: đảo ngẫu nhiên (shuffle) value của các element có index tương ứng
- * (1,2,3,... là index trong Object.values(obj)), sau đó xoá phần "[RANDOM:...]"
- * khỏi element 0, chỉ giữ lại phần text còn lại.
- */
-function findandDoRandom(arr) {
-  const randomRegex = /\[RANDOM:([\d,\s]+)\]/;
-  arr.forEach((obj) => {
-    try {
-      const keys = Object.keys(obj);
-      if (keys.length === 0) return;
-      const firstKey = keys[0];
-      const firstValue = obj[firstKey];
-      if (typeof firstValue !== "string") return;
-      const match = firstValue.match(randomRegex);
-      if (!match) return;
-      // Lấy danh sách index cần đảo, vd "2,3" -> [2,3]
-      const indices = match[1]
-        .split(",")
-        .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => !isNaN(n) && keys[n] !== undefined);
-      if (indices.length > 1) {
-        const targetKeys = indices.map((idx) => keys[idx]);
-        const values = targetKeys.map((k) => obj[k]);
-        const shuffled = shuffleArray(values.slice());
-        targetKeys.forEach((k, i) => {
-          obj[k] = shuffled[i];
-        });
-      }
-      // Bỏ "[RANDOM:...]" khỏi element 0, giữ lại text còn lại
-      obj[firstKey] = firstValue.replace(randomRegex, "").trim();
-    } catch (error) {
-      console.error("Error in findandDoRandom function:", error);
-    }
-  });
-  return arr;
 }

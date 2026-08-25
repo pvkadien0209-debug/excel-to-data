@@ -1,0 +1,29 @@
+Chỉnh file nào ở đâu
+________________
+
+  guideToUse_C001,
+  transMultiSet,
+  f_excel_after_unifileandNext_t_table_4_copy,
+  SoureCodeToEdit,
+  ===>Create_A_InputData_Tranfer_2024_HOPEFINAL_C001.js
+_______________-
+
+  LayBangFsp_1bang_toCopy: () => FN_01(),
+  LayBangZZZZA1: () => FN_ZZZZA1(),
+  DaCo_ZZZZA1_GHEP_HD01_exportFileExcel: () => FN_ZZZZA1_HD01(),
+
+  ===>JSON_chuyendoiSangDangThucbang.js
+_________________
+  SoureCodeToEdit,
+  A_Unifile_Outside,
+  B_NextStep_OUTSIDE,
+  C_NextStep_DontUnifile,
+  D_TimVaHienThiThayThe_AddvaMode_tuFileExcelMuti10_11_12,
+  E_LayTatCaCodeVaText_toAudioCode_11_12_musthavecodevtext,
+  ===>Button_chuyendoi_001.js
+  ________________
+    A_Unifile_Outside,
+  B_NextStep_OUTSIDE,
+  Z_TransformTemplateHotel,
+  NextStep_DontUnifile,
+  ===> ./Create_A_InputData_Tranfer_01.js
