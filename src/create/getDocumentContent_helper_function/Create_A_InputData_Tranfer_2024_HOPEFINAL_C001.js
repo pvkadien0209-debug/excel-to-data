@@ -1336,35 +1336,251 @@ function removeVietnameseAccents(str) {
  * (1,2,3,... là index trong Object.values(obj)), sau đó xoá phần "[RANDOM:...]"
  * khỏi element 0, chỉ giữ lại phần text còn lại.
  */
+// ============================================================
+// RANDOM CÂN BẰNG ĐÁP ÁN TRẮC NGHIỆM
+// ============================================================
+//
+// Ví dụ:
+//
+// [RANDOM:2,3]
+// => vị trí 2 và 3 được phân bố 50% / 50%
+//
+// [RANDOM:2,3,4]
+// => vị trí 2, 3, 4 được phân bố 33% / 33% / 34%
+//
+// [RANDOM:2,3,4,5]
+// => vị trí 2, 3, 4, 5 được phân bố 25% / 25% / 25% / 25%
+//
+// ============================================================
+
+// Lưu thống kê cho từng nhóm RANDOM
+const randomStats = {};
+
+// ============================================================
+// Hàm lấy key thống nhất cho một nhóm RANDOM
+// ============================================================
+//
+// [2,3,4] và [4,2,3] sẽ được xem là cùng một nhóm
+//
+// => "2,3,4"
+// ============================================================
+
+function getRandomGroupKey(indices) {
+  return [...indices].sort((a, b) => a - b).join(",");
+}
+
+// ============================================================
+// Chọn vị trí theo cơ chế cân bằng
+// ============================================================
+//
+// Ví dụ:
+//
+// 2: 10 lần
+// 3: 8 lần
+// 4: 8 lần
+//
+// => ưu tiên 3 hoặc 4
+//
+// Nếu nhiều vị trí cùng ít nhất
+// => random giữa các vị trí đó
+// ============================================================
+
+function getBalancedRandomIndex(indices) {
+  const groupKey = getRandomGroupKey(indices);
+
+  // Nếu nhóm chưa tồn tại thì khởi tạo
+  if (!randomStats[groupKey]) {
+    randomStats[groupKey] = {
+      total: 0,
+      positions: {},
+    };
+
+    indices.forEach((index) => {
+      randomStats[groupKey].positions[index] = 0;
+    });
+  }
+
+  const stats = randomStats[groupKey].positions;
+
+  // Tìm số lần xuất hiện thấp nhất
+  let minCount = Infinity;
+
+  indices.forEach((index) => {
+    const count = stats[index] || 0;
+
+    if (count < minCount) {
+      minCount = count;
+    }
+  });
+
+  // Những vị trí đang ít nhất
+  const candidates = indices.filter((index) => {
+    return (stats[index] || 0) === minCount;
+  });
+
+  // Nếu nhiều vị trí cùng ít nhất
+  // => random giữa chúng
+  const selectedIndex =
+    candidates[Math.floor(Math.random() * candidates.length)];
+
+  // Tăng bộ đếm
+  stats[selectedIndex] = (stats[selectedIndex] || 0) + 1;
+
+  randomStats[groupKey].total++;
+
+  return selectedIndex;
+}
+
+// ============================================================
+// Shuffle các giá trị
+// Fisher-Yates
+// ============================================================
+
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+
+  return array;
+}
+
+// ============================================================
+// Hàm chính
+// ============================================================
+
 function findandDoRandom(arr) {
   const randomRegex = /\[RANDOM:([\d,\s]+)\]/;
+
   arr.forEach((obj) => {
     try {
       const keys = Object.keys(obj);
-      if (keys.length === 0) return;
+
+      if (keys.length === 0) {
+        return;
+      }
+
+      // --------------------------------------------------------
+      // Key đầu tiên chứa [RANDOM:...]
+      // --------------------------------------------------------
+
       const firstKey = keys[0];
+
       const firstValue = obj[firstKey];
-      if (typeof firstValue !== "string") return;
+
+      if (typeof firstValue !== "string") {
+        return;
+      }
+
+      // --------------------------------------------------------
+      // Tìm [RANDOM:...]
+      // --------------------------------------------------------
+
       const match = firstValue.match(randomRegex);
-      if (!match) return;
-      // Lấy danh sách index cần đảo, vd "2,3" -> [2,3]
+
+      if (!match) {
+        return;
+      }
+
+      // --------------------------------------------------------
+      // Lấy danh sách index
+      //
+      // [RANDOM:2,3,4]
+      //
+      // => [2,3,4]
+      // --------------------------------------------------------
+
       const indices = match[1]
         .split(",")
         .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => !isNaN(n) && keys[n] !== undefined);
+        .filter(
+          (index) =>
+            Number.isInteger(index) && index >= 0 && index < keys.length,
+        );
+
+      // --------------------------------------------------------
+      // Nếu có ít nhất 2 vị trí
+      // --------------------------------------------------------
+
       if (indices.length > 1) {
-        const targetKeys = indices.map((idx) => keys[idx]);
-        const values = targetKeys.map((k) => obj[k]);
-        const shuffled = shuffleArray(values.slice());
-        targetKeys.forEach((k, i) => {
-          obj[k] = shuffled[i];
-        });
+        // ======================================================
+        // 1. Xác định vị trí mà ĐÁP ÁN ĐÚNG sẽ được đặt
+        // ======================================================
+
+        const correctIndex = getBalancedRandomIndex(indices);
+
+        // ======================================================
+        // 2. Vị trí ban đầu của đáp án đúng
+        //
+        // Theo cấu trúc hiện tại:
+        // đáp án đúng ban đầu nằm ở vị trí đầu tiên
+        // trong danh sách RANDOM
+        //
+        // Ví dụ:
+        //
+        // [RANDOM:2,3,4]
+        //
+        // đáp án đúng ban đầu:
+        // keys[2]
+        // ======================================================
+
+        const originalIndex = indices[0];
+
+        // ======================================================
+        // 3. Nếu vị trí đúng được chọn khác vị trí ban đầu
+        //    thì thực hiện đổi vị trí
+        // ======================================================
+
+        if (correctIndex !== originalIndex) {
+          const originalKey = keys[originalIndex];
+
+          const targetKey = keys[correctIndex];
+
+          // ----------------------------------------------------
+          // Đổi đáp án đúng với đáp án ở vị trí mới
+          // ----------------------------------------------------
+
+          [obj[originalKey], obj[targetKey]] = [
+            obj[targetKey],
+            obj[originalKey],
+          ];
+        }
+
+        // ======================================================
+        // 4. Random phần còn lại
+        //
+        // Sau khi đưa đáp án đúng tới vị trí cần thiết,
+        // các đáp án sai cũng được đảo để tránh việc
+        // chỉ có đáp án đúng thay đổi.
+        // ======================================================
+
+        const remainingIndices = indices.filter(
+          (index) => index !== correctIndex,
+        );
+
+        if (remainingIndices.length > 1) {
+          const remainingKeys = remainingIndices.map((index) => keys[index]);
+
+          const remainingValues = remainingKeys.map((key) => obj[key]);
+
+          shuffleArray(remainingValues);
+
+          remainingKeys.forEach((key, i) => {
+            obj[key] = remainingValues[i];
+          });
+        }
       }
-      // Bỏ "[RANDOM:...]" khỏi element 0, giữ lại text còn lại
+
+      // ========================================================
+      // 5. Xóa [RANDOM:...]
+      // ========================================================
+
       obj[firstKey] = firstValue.replace(randomRegex, "").trim();
     } catch (error) {
       console.error("Error in findandDoRandom function:", error);
     }
   });
+
   return arr;
 }
