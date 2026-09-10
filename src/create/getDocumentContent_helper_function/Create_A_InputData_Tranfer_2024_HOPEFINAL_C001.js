@@ -152,7 +152,7 @@ function shuffleArray(array) {
 
 function transformInputArray(inputArray) {
   if (inputArray.length === 0) return;
-  let nameSets = ["IF", "HD", "TB", "Others", "TV", "IPA", "HT", "MC"];
+  let nameSets = ["IF", "HD", "TB", "Others", "H0", "TV", "IPA", "HT", "MC"];
   const mapping = processArrayGetMap(inputArray, nameSets);
 
   // Khởi tạo res tự động theo số lượng nameSets (thay cho push cứng 8 lần)
