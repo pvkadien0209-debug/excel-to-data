@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import $ from "jquery";
 import readXlsxFile from "read-excel-file";
-import transferTextToArray from "./transferTextToArray";
 import * as Button_chuyendoi_001 from "./create/getDocumentContent_helper_function/Button_chuyendoi_001";
 import * as ChuyenDoi_Buoc_1 from "./create/getDocumentContent_helper_function/JSON_chuyendoiSangDangThucbang";
 import * as ChuyenDoi_Buoc_2 from "./create/getDocumentContent_helper_function/Create_A_InputData_Tranfer_2024_HOPEFINAL_C001";
@@ -270,13 +269,8 @@ function GetDocument() {
   useEffect(() => {
     const handleFileChange = async (event) => {
       try {
-        let ArrIndex;
         const indexText = $("#IndexExcel").text();
-        if (indexText.includes("-")) {
-          ArrIndex = transferTextToArray(indexText);
-        } else {
-          ArrIndex = indexText.split(" ").join("").split(",");
-        }
+        const ArrIndex = parseSheetIndexInput(indexText);
         let ArrOUT = [];
         for (const e of ArrIndex) {
           const rows = await readXlsxFile(event.target.files[0], { sheet: e });
@@ -458,6 +452,41 @@ export default GetDocument;
 /* ══════════════════════════════════════════════════════════════ */
 /*  HELPERS (logic giữ nguyên)                                   */
 /* ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Chuẩn hoá chuỗi nhập danh sách sheet. Hỗ trợ:
+ *  - Danh sách rời rạc:      "1,2,3"
+ *  - Có khoảng trắng:        "1,  2,4"      -> bỏ hết khoảng trắng trước khi tách
+ *  - Khoảng liên tục:        "1-4"          -> 1,2,3,4
+ *  - Kết hợp cả 2 kiểu:      "2, 6-8"       -> 2,6,7,8
+ * Đồng thời tự đoán các trường hợp bấm nhầm phổ biến:
+ *  - Đảo chiều khoảng:       "8-6"          -> hiểu như "6-8" -> 6,7,8
+ *  - Trùng lặp giữa danh sách và khoảng: "3,1-4" -> 1,2,3,4 (bỏ trùng)
+ */
+function parseSheetIndexInput(text) {
+  const cleaned = (text || "").split(" ").join("");
+  const numbers = [];
+
+  cleaned.split(",").forEach((token) => {
+    if (!token) return; // bỏ qua dấu phẩy thừa/liên tiếp, ví dụ "1,,2"
+    if (token.includes("-")) {
+      const [rawStart, rawEnd] = token.split("-");
+      let start = parseInt(rawStart, 10);
+      let end = parseInt(rawEnd, 10);
+      if (Number.isNaN(start) || Number.isNaN(end)) return;
+      if (start > end) [start, end] = [end, start]; // bấm nhầm đảo khoảng, vd "8-6"
+      for (let i = start; i <= end; i++) numbers.push(i);
+    } else {
+      const n = parseInt(token, 10);
+      if (!Number.isNaN(n)) numbers.push(n);
+    }
+  });
+
+  // bỏ số trùng (bấm nhầm kiểu "3,1-4") và sắp xếp tăng dần cho dễ đoán kết quả
+  return Array.from(new Set(numbers))
+    .sort((a, b) => a - b)
+    .map(String);
+}
 
 function showButton(ArrBTN, color) {
   let ArrObj = Object.keys(ArrBTN);
