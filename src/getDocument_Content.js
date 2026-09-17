@@ -290,7 +290,10 @@ function GetDocument() {
       const file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa, luôn là bản mới nhất
       const lastIndexText = getLastIndexText() || entry.indexText || undefined;
       if (lastIndexText) SetIndexExcel(lastIndexText);
-      updateLastFileBadge("Đang dùng: " + entry.name);
+      updateLastFileBadge(
+        (entry.handle ? "🔗 Đang dùng (đọc lại từ đĩa): " : "📌 Đang dùng (bản snapshot cũ): ") +
+          entry.name,
+      );
       await processExcelSource(file, lastIndexText);
       return true;
     } catch (error) {
@@ -312,7 +315,10 @@ function GetDocument() {
     try {
       const file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa, luôn là bản mới nhất
       SetIndexExcel(entry.indexText || "");
-      updateLastFileBadge("Đang dùng: " + entry.name);
+      updateLastFileBadge(
+        (entry.handle ? "🔗 Đang dùng (đọc lại từ đĩa): " : "📌 Đang dùng (bản snapshot cũ): ") +
+          entry.name,
+      );
       await processExcelSource(file, entry.indexText || undefined);
     } catch (error) {
       console.error(error);
@@ -468,13 +474,19 @@ function GetDocument() {
           </option>
           {fileHistory.slice(1, 5).map((entry, i) => (
             <option key={entry.savedAt} value={i + 1}>
-              {`${i + 2}. ${entry.name}${
+              {`${entry.handle ? "🔗" : "📌"} ${i + 2}. ${entry.name}${
                 entry.indexText ? " (" + entry.indexText + ")" : ""
               }`}
             </option>
           ))}
         </select>
         <span style={styles.hint} id="LastFileNameID"></span>
+        {!supportsFSAccess && (
+          <span style={{ ...styles.hint, color: "#fbbf24" }}>
+            ⚠️ Trình duyệt hiện tại không tự đọc lại được file đã sửa — nội
+            dung lấy lại sẽ là bản lúc chọn (snapshot).
+          </span>
+        )}
 
         <button
           style={styles.btnDanger}
@@ -766,7 +778,10 @@ async function pushFileHistory({ file, handle }, indexText) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    updateLastFileBadge("Đã lưu: " + file.name);
+    updateLastFileBadge(
+      (handle ? "🔗 Đã lưu (tự đọc lại được): " : "📌 Đã lưu (chỉ là snapshot): ") +
+        file.name,
+    );
     return updated;
   } catch (error) {
     console.error("Không lưu được lịch sử file:", error);
