@@ -273,20 +273,44 @@ const hoverProps = (base, hover) => ({
 /* ══════════════════════════════════════════════════════════════ */
 function GetDocument() {
   const [IndexExcel, SetIndexExcel] = useState("1");
+  // 5 file gần nhất đã chọn (kèm sheet đã lấy) — [0] mới nhất, [1..4] cho ô select
+  const [fileHistory, setFileHistory] = useState([]);
 
-  /* Bước "Lấy file gần nhất": nạp lại file đã lưu CÙNG với giá trị sheet
-     (vd "1-4") vừa nhập gần nhất, rồi xử lý y như chọn file thủ công. */
+  /* Bước "Lấy file gần nhất": nạp lại file đã lưu gần nhất (fileHistory[0])
+     CÙNG với giá trị sheet (vd "1-4") vừa nhập gần nhất, rồi xử lý y như
+     chọn file thủ công. */
   const handleLayFileGanNhat = async () => {
-    const record = await loadLastExcelFile();
-    if (!record) {
+    const history = fileHistory.length ? fileHistory : await getFileHistory();
+    const entry = history[0];
+    if (!entry) {
       alert("Chưa có file nào được lưu.");
       return false;
     }
-    const lastIndexText = getLastIndexText();
+    const lastIndexText = getLastIndexText() || entry.indexText || undefined;
     if (lastIndexText) SetIndexExcel(lastIndexText);
-    await processExcelSource(record.blob, lastIndexText || undefined);
+    updateLastFileBadge("Đang dùng: " + entry.name);
+    await processExcelSource(entry.blob, lastIndexText);
     return true;
   };
+
+  /* Chọn 1 trong 4 file gần thứ 2-5 từ ô select: dùng đúng sheet đã lưu
+     cùng file đó lúc lấy, không lấy theo ô nhập hiện tại. */
+  const handleChonFileTuLichSu = async (event) => {
+    const idx = Number(event.target.value);
+    event.target.value = ""; // trả select về placeholder sau khi chọn
+    if (!Number.isInteger(idx)) return;
+    const history = fileHistory.length ? fileHistory : await getFileHistory();
+    const entry = history[idx];
+    if (!entry) return;
+    SetIndexExcel(entry.indexText || "");
+    updateLastFileBadge("Đang dùng: " + entry.name);
+    await processExcelSource(entry.blob, entry.indexText || undefined);
+  };
+
+  /* ── nạp lịch sử file đã lưu khi mở trang ── */
+  useEffect(() => {
+    getFileHistory().then(setFileHistory);
+  }, []);
 
   /* ── URL param ── */
   useEffect(() => {
@@ -300,8 +324,11 @@ function GetDocument() {
     const handleFileChange = async (event) => {
       const file = event.target.files[0];
       if (!file) return;
-      await processExcelSource(file);
-      saveLastExcelFile(file); // lưu lại file vừa chọn, dùng cho nút "Lấy file gần nhất"
+      const indexText = $("#IndexExcel").text();
+      await processExcelSource(file, indexText);
+      // lưu lại file + sheet vừa lấy vào lịch sử 5 file gần nhất
+      const updated = await pushFileHistory(file, indexText);
+      if (updated) setFileHistory(updated);
     };
     $("#headerID").hide();
     const input = document.getElementById("input");
@@ -372,6 +399,23 @@ function GetDocument() {
         >
           🕘 Lấy file gần nhất
         </button>
+
+        <select
+          style={styles.textInput}
+          defaultValue=""
+          onChange={handleChonFileTuLichSu}
+        >
+          <option value="" disabled>
+            📚 File gần đây khác…
+          </option>
+          {fileHistory.slice(1, 5).map((entry, i) => (
+            <option key={entry.savedAt} value={i + 1}>
+              {`${i + 2}. ${entry.name}${
+                entry.indexText ? " (" + entry.indexText + ")" : ""
+              }`}
+            </option>
+          ))}
+        </select>
         <span style={styles.hint} id="LastFileNameID"></span>
 
         <button
@@ -568,9 +612,12 @@ async function processExcelSource(fileOrBlob, indexTextOverride) {
   }
 }
 
-/* ── Lưu / lấy lại file excel đã chọn gần nhất (IndexedDB) ── */
+/* ── Lưu / lấy lại 5 file excel đã chọn gần nhất, kèm sheet đã lấy (IndexedDB) ──
+   record dạng { blob, name, indexText, savedAt }, [0] là mới nhất. */
 const LAST_FILE_DB_NAME = "excelDataTool_LastFileDB";
 const LAST_FILE_STORE = "lastExcelFile";
+const FILE_HISTORY_KEY = "history";
+const FILE_HISTORY_LIMIT = 5;
 
 function openLastFileDB() {
   return new Promise((resolve, reject) => {
@@ -583,43 +630,48 @@ function openLastFileDB() {
   });
 }
 
-async function saveLastExcelFile(file) {
+function updateLastFileBadge(text) {
+  const badge = document.getElementById("LastFileNameID");
+  if (badge) badge.textContent = text;
+}
+
+async function getFileHistory() {
   try {
     const db = await openLastFileDB();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(LAST_FILE_STORE, "readwrite");
-      tx.objectStore(LAST_FILE_STORE).put(
-        { blob: file, name: file.name, savedAt: Date.now() },
-        "latest",
-      );
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
+    const history = await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readonly");
+      const req = tx.objectStore(LAST_FILE_STORE).get(FILE_HISTORY_KEY);
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
     });
-    const badge = document.getElementById("LastFileNameID");
-    if (badge) badge.textContent = "Đã lưu: " + file.name;
+    return history;
   } catch (error) {
-    console.error("Không lưu được file gần nhất:", error);
+    console.error("Không đọc được lịch sử file:", error);
+    return [];
   }
 }
 
-async function loadLastExcelFile() {
+async function pushFileHistory(file, indexText) {
   try {
     const db = await openLastFileDB();
-    const record = await new Promise((resolve, reject) => {
-      const tx = db.transaction(LAST_FILE_STORE, "readonly");
-      const req = tx.objectStore(LAST_FILE_STORE).get("latest");
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
+    const history = await getFileHistory();
+    const entry = {
+      blob: file,
+      name: file.name,
+      indexText: indexText || "",
+      savedAt: Date.now(),
+    };
+    const updated = [entry, ...history].slice(0, FILE_HISTORY_LIMIT);
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readwrite");
+      tx.objectStore(LAST_FILE_STORE).put(updated, FILE_HISTORY_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
     });
-    const badge = document.getElementById("LastFileNameID");
-    if (badge) {
-      badge.textContent = record
-        ? "Đang dùng: " + record.name
-        : "Chưa có file đã lưu";
-    }
-    return record;
+    updateLastFileBadge("Đã lưu: " + file.name);
+    return updated;
   } catch (error) {
-    console.error("Không lấy được file gần nhất:", error);
+    console.error("Không lưu được lịch sử file:", error);
     return null;
   }
 }
