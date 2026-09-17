@@ -542,6 +542,19 @@ function FN_ZZZZA1() {
   $("#ResID03").text(JSON.stringify(GetData()[0]));
   $("#ResID04").text(JSON.stringify(GetData()[2]));
 }
+/**
+ * Chuẩn hoá 1 giá trị lấy từ ô Excel trước khi "ghép" (split/join) vào chuỗi
+ * JSON template trong FN_ZZZZA1_HD01. Giữ nguyên hành vi cũ (đổi dấu " thành
+ * ' để không phá cấu trúc JSON), đồng thời escape đúng chuẩn JSON các ký tự
+ * đặc biệt (xuống dòng, tab, backslash, ...) — nếu không, ô Excel nhiều dòng
+ * (multi-line, như ô ghi "- học online...\n- vấn đề khó hơn...") sẽ chèn
+ * newline "trần" vào chuỗi JSON và làm JSON.parse phía sau lỗi/mất nội dung.
+ */
+function sanitizeForJsonTemplate(value) {
+  if (value === undefined || value === null) return "";
+  const safe = String(value).split(`"`).join(`'`); // giữ hành vi cũ: " -> ' để không phá JSON
+  return JSON.stringify(safe).slice(1, -1); // escape đúng chuẩn JSON (\n, \\, \t, ...), bỏ 2 dấu " bao ngoài
+}
 function FN_ZZZZA1_HD01() {
   let data_ZZZZA1 = JSON.parse($("#ResID02").text());
   let Data_hd = JSON.parse($("#ResID03").text());
@@ -555,7 +568,7 @@ function FN_ZZZZA1_HD01() {
       try {
         data_string_hd01 = data_string_hd01
           .split(e1)
-          .join(e[e1].split(`"`).join(`'`));
+          .join(sanitizeForJsonTemplate(e[e1]));
       } catch (error) {}
     });
     let data_chuyendoi_gancuoi = nextStepOutside(JSON.parse(data_string_hd01));
@@ -576,7 +589,7 @@ function FN_ZZZZA1_HD01() {
       try {
         data_string_hd_excel = data_string_hd_excel
           .split(e1)
-          .join(e[e1].split(`"`).join(`'`));
+          .join(sanitizeForJsonTemplate(e[e1]));
       } catch (error) {}
     });
     data_string_hd_excel = data_string_hd_excel

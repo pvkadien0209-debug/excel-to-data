@@ -101,6 +101,14 @@ const styles = {
     color: "#64748b",
     fontStyle: "italic",
   },
+  formLabel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.3rem",
+    fontSize: "0.72rem",
+    color: "#94a3b8",
+    fontWeight: 600,
+  },
 
   /* ── buttons ── */
   btnDanger: {
@@ -276,6 +284,18 @@ function GetDocument() {
   // 5 file gần nhất đã chọn (kèm sheet đã lấy) — [0] mới nhất, [1..4] cho ô select
   const [fileHistory, setFileHistory] = useState([]);
 
+  // ── danh sách template đã lưu (localStorage) + template đang chọn để chạy ──
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
+  // ── state cho popup "➕ Tạo Template" ──
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formFileMode, setFormFileMode] = useState("new"); // "new" = luôn chọn file khi chạy | "latest" = luôn dùng file mới nhất đã lưu
+  const [formFrom, setFormFrom] = useState("");
+  const [formTo, setFormTo] = useState("");
+  const [formSteps, setFormSteps] = useState(["", "", "", "", ""]); // id nút mỗi bước, "" = không chọn (null)
+
   /* Bước "Lấy file gần nhất": nạp lại file đã lưu gần nhất (fileHistory[0])
      CÙNG với giá trị sheet (vd "1-4") vừa nhập gần nhất, rồi xử lý y như
      chọn file thủ công. */
@@ -328,11 +348,30 @@ function GetDocument() {
 
   /* "📁 Chọn file": ưu tiên File System Access API để lấy "handle" trỏ vào
      file thật trên đĩa (đọc lại được bản mới nhất mỗi lần dùng). Nếu trình
-     duyệt không hỗ trợ thì rơi về input file cũ (chỉ lưu được snapshot). */
-  const handleChonFileClick = async () => {
+     duyệt không hỗ trợ thì rơi về input file cũ (chỉ lưu được snapshot). Chỉ
+     MỞ HỘP THOẠI CHỌN FILE và trả về {file, handle, name} — không xử lý/lưu
+     gì thêm, để cả nút "Chọn file" lẫn TEMPLATE đều dùng chung được. */
+  const pickNewExcelFile = async () => {
     if (!supportsFSAccess) {
-      document.getElementById("input").click();
-      return;
+      return new Promise((resolve) => {
+        const inputEl = document.getElementById("input");
+        const onChange = () => {
+          cleanup();
+          const f = inputEl.files[0];
+          resolve(f ? { file: f, handle: null, name: f.name } : null);
+        };
+        const onCancel = () => {
+          cleanup();
+          resolve(null);
+        };
+        const cleanup = () => {
+          inputEl.removeEventListener("change", onChange);
+          inputEl.removeEventListener("cancel", onCancel);
+        };
+        inputEl.addEventListener("change", onChange);
+        inputEl.addEventListener("cancel", onCancel); // trình duyệt mới: bấm huỷ picker cũng thoát được
+        inputEl.click();
+      });
     }
     try {
       const [handle] = await window.showOpenFilePicker({
@@ -350,48 +389,139 @@ function GetDocument() {
       const ok = await verifyPermission(handle);
       if (!ok) {
         alert("Không có quyền đọc file.");
-        return;
+        return null;
       }
       const file = await handle.getFile();
-      const indexText = $("#IndexExcel").text();
-      await processExcelSource(file, indexText);
-      const updated = await pushFileHistory({ file, handle }, indexText);
-      if (updated) setFileHistory(updated);
+      return { file, handle, name: file.name };
     } catch (error) {
       if (error && error.name !== "AbortError") console.error(error); // bỏ qua khi người dùng bấm huỷ picker
+      return null;
     }
   };
 
-  /* ── nạp lịch sử file đã lưu khi mở trang ── */
+  /* Nút "📁 Chọn file": chọn file mới, xử lý luôn theo sheet đang nhập, rồi lưu
+     vào lịch sử 5 file gần nhất. */
+  const handleChonFileClick = async () => {
+    const picked = await pickNewExcelFile();
+    if (!picked) return;
+    const indexText = $("#IndexExcel").text();
+    await processExcelSource(picked.file, indexText);
+    const updated = await pushFileHistory(
+      { file: picked.file, handle: picked.handle },
+      indexText,
+    );
+    if (updated) setFileHistory(updated);
+  };
+
+  /* Chạy 1 template (config = {name, fileMode, from, to, steps}): lấy file
+     theo fileMode ("new" = mở hộp thoại chọn file, "latest" = luôn dùng file
+     mới nhất đã lưu), lấy đúng khoảng sheet từ-đến, lưu lại file + sheet đó
+     vào lịch sử (giống hành vi "Chọn file"/"Lấy file gần nhất"), rồi bấm LẦN
+     LƯỢT các nút đã chọn ở từng bước — bước nào để trống thì bỏ qua, chờ bước
+     trước có kết quả xong mới sang bước sau. */
+  const handleRunTemplateConfig = async (config) => {
+    try {
+      let file, handle, name;
+      if (config.fileMode === "latest") {
+        const history = fileHistory.length
+          ? fileHistory
+          : await getFileHistory();
+        const entry = history[0];
+        if (!entry) {
+          alert("Chưa có file nào được lưu để dùng làm 'file mới nhất'.");
+          return;
+        }
+        file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa nếu có handle
+        handle = entry.handle;
+        name = entry.name;
+      } else {
+        const picked = await pickNewExcelFile();
+        if (!picked) return;
+        ({ file, handle, name } = picked);
+      }
+
+      const from = (config.from || "").trim();
+      const to = (config.to || "").trim();
+      let sheetText;
+      if (from && to) sheetText = from === to ? from : `${from}-${to}`;
+      else if (from) sheetText = from;
+      else sheetText = getLastIndexText() || $("#IndexExcel").text();
+
+      SetIndexExcel(sheetText);
+      saveLastIndexText(sheetText);
+      updateLastFileBadge(
+        "🧩 " + (config.name ? config.name + ": " : "") + name,
+      );
+      await processExcelSource(file, sheetText);
+
+      // lưu lại file + sheet vừa lấy (đúng logic của "Chọn file"/"Lấy file gần nhất")
+      const updated = await pushFileHistory({ file, handle }, sheetText);
+      if (updated) setFileHistory(updated);
+
+      // bấm lần lượt các nút đã chọn, bỏ qua bước để trống
+      for (const actionId of config.steps || []) {
+        if (!actionId) continue;
+        const action = actionRegistry.find((a) => a.id === actionId);
+        if (!action) continue;
+        await Promise.resolve(action.run());
+      }
+    } catch (error) {
+      console.error("Lỗi TEMPLATE:", error);
+      alert("Có lỗi khi chạy TEMPLATE: " + error.message);
+    }
+  };
+
+  /* Nút "➕ Tạo Template": mở popup với form trống. */
+  const openCreateTemplateModal = () => {
+    setFormName("");
+    setFormFileMode("new");
+    setFormFrom("");
+    setFormTo("");
+    setFormSteps(["", "", "", "", ""]);
+    setTemplateModalOpen(true);
+  };
+
+  /* Nút "💾 Lưu Template" trong popup: thêm vào danh sách, lưu localStorage,
+     cho phép tạo nhiều template khác nhau, mỗi cái 1 tên riêng. */
+  const handleSaveTemplate = () => {
+    const newTemplate = {
+      id: Date.now().toString(),
+      name: formName.trim() || `Template ${templates.length + 1}`,
+      fileMode: formFileMode,
+      from: formFrom.trim(),
+      to: formTo.trim(),
+      steps: formSteps,
+    };
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    saveTemplatesList(updated);
+    setSelectedTemplateId(newTemplate.id);
+    setTemplateModalOpen(false);
+  };
+
+  /* Nút "🗑" cạnh select: xoá template đang chọn khỏi danh sách. */
+  const handleDeleteSelectedTemplate = () => {
+    if (!selectedTemplateId) return;
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (tpl && !window.confirm(`Xoá template "${tpl.name}"?`)) return;
+    const updated = templates.filter((t) => t.id !== selectedTemplateId);
+    setTemplates(updated);
+    saveTemplatesList(updated);
+    setSelectedTemplateId("");
+  };
+
+  /* ── nạp lịch sử file + danh sách template đã lưu khi mở trang ── */
   useEffect(() => {
     getFileHistory().then(setFileHistory);
+    setTemplates(loadTemplates());
   }, []);
 
-  /* ── URL param ── */
+  /* ── URL param + ẩn header mặc định ── */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const rowParam = params.get("row");
     document.getElementById("SODONGEXCELCANLAYID").textContent = rowParam || 4;
-  }, []);
-
-  /* ── file reader ── */
-  useEffect(() => {
-    const handleFileChange = async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-      const indexText = $("#IndexExcel").text();
-      await processExcelSource(file, indexText);
-      // lưu lại file + sheet vừa lấy vào lịch sử 5 file gần nhất (không có
-      // handle vì đây là input file thường -> chỉ là bản snapshot lúc chọn)
-      const updated = await pushFileHistory({ file }, indexText);
-      if (updated) setFileHistory(updated);
-    };
     $("#headerID").hide();
-    const input = document.getElementById("input");
-    input.addEventListener("change", handleFileChange);
-    return () => {
-      input.removeEventListener("change", handleFileChange);
-    };
   }, []);
 
   /* ── render ── */
@@ -568,22 +698,191 @@ function GetDocument() {
             e.currentTarget.style.boxShadow =
               "0 2px 10px rgba(244,63,94,0.35)";
           }}
-          onClick={async () => {
-            try {
-              // Bấm lần lượt từng nút, chờ có kết quả xong mới bấm nút tiếp theo
-              const daCoFile = await handleLayFileGanNhat(); // 1: "Lấy file gần nhất" (kèm sheet đã lưu, vd "1-4")
-              if (!daCoFile) return;
-              Button_chuyendoi_001.C_NextStep_DontUnifile(); // 2: "NextStepDontUnifile"
-              copyElementTextToClipboard("ResID"); // 3: "Copy" Result #01
-            } catch (error) {
-              console.error("Lỗi JSON REMOTION:", error);
-              alert("Có lỗi khi chạy JSON REMOTION: " + error.message);
+          onClick={openCreateTemplateModal}
+        >
+          ➕ Tạo Template
+        </button>
+
+        <select
+          style={styles.textInput}
+          value={selectedTemplateId}
+          onChange={(e) => setSelectedTemplateId(e.target.value)}
+        >
+          <option value="">🧩 Chọn Template đã lưu…</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+
+        <button
+          style={styles.btnRemotion}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow = "0 4px 16px rgba(244,63,94,0.5)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow =
+              "0 2px 10px rgba(244,63,94,0.35)";
+          }}
+          onClick={() => {
+            const tpl = templates.find((t) => t.id === selectedTemplateId);
+            if (!tpl) {
+              alert("Hãy chọn 1 template để chạy, hoặc bấm ➕ Tạo Template.");
+              return;
             }
+            handleRunTemplateConfig(tpl);
           }}
         >
-          🎬 JSON REMOTION
+          ▶ Chạy
         </button>
+
+        {selectedTemplateId && (
+          <button
+            style={styles.btnDanger}
+            onClick={handleDeleteSelectedTemplate}
+            title="Xoá template đang chọn"
+          >
+            🗑
+          </button>
+        )}
       </div>
+
+      {/* ─── POPUP TẠO TEMPLATE ─── */}
+      {templateModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTemplateModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              ...styles.card,
+              width: "min(640px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "#1e293b",
+              border: "1px solid rgba(255,255,255,0.12)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div style={styles.cardTitle}>➕ Tạo Template mới</div>
+
+            <label style={{ ...styles.formLabel, marginBottom: "1rem" }}>
+              Tên template
+              <input
+                type="text"
+                placeholder="VD: Xuất JSON Remotion"
+                style={styles.textInput}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "1rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <label style={{ ...styles.formLabel, minWidth: "220px" }}>
+                Lấy file nào
+                <select
+                  style={styles.textInput}
+                  value={formFileMode}
+                  onChange={(e) => setFormFileMode(e.target.value)}
+                >
+                  <option value="new">📁 Chọn file mới mỗi lần chạy</option>
+                  <option value="latest">🕘 Luôn dùng file mới nhất đã lưu</option>
+                </select>
+              </label>
+
+              <label style={styles.formLabel}>
+                Lấy số từ mấy đến mấy
+                <span style={{ display: "inline-flex", gap: "0.4rem" }}>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Từ"
+                    style={{ ...styles.textInput, width: "70px", flex: "none" }}
+                    value={formFrom}
+                    onChange={(e) => setFormFrom(e.target.value)}
+                  />
+                  <span style={{ alignSelf: "center" }}>→</span>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Đến"
+                    style={{ ...styles.textInput, width: "70px", flex: "none" }}
+                    value={formTo}
+                    onChange={(e) => setFormTo(e.target.value)}
+                  />
+                </span>
+              </label>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "1rem",
+                marginBottom: "1rem",
+              }}
+            >
+              {formSteps.map((stepValue, i) => (
+                <label
+                  key={i}
+                  style={{ ...styles.formLabel, minWidth: "220px" }}
+                >
+                  {`Nút thứ ${i + 1} bấm là nút nào`}
+                  <select
+                    style={styles.textInput}
+                    value={stepValue}
+                    onChange={(e) => {
+                      const next = [...formSteps];
+                      next[i] = e.target.value;
+                      setFormSteps(next);
+                    }}
+                  >
+                    <option value="">— Không chọn —</option>
+                    {actionRegistry.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: "0.6rem" }}>
+              <button style={styles.btnRemotion} onClick={handleSaveTemplate}>
+                💾 Lưu Template
+              </button>
+              <button
+                style={styles.btnDanger}
+                onClick={() => setTemplateModalOpen(false)}
+              >
+                Huỷ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── RESULT STRIP ─── */}
       <div style={styles.resultStrip}>
@@ -665,7 +964,7 @@ function parseSheetIndexInput(text) {
  * Đọc 1 nguồn file Excel (File từ input, hoặc Blob lấy từ IndexedDB) theo
  * danh sách sheet đang nhập (hoặc indexTextOverride nếu truyền vào), rồi ghi
  * kết quả JSON ra #ResID. Dùng chung cho input file, nút "Lấy file gần nhất"
- * và nút "JSON REMOTION".
+ * và nút "🧩 TEMPLATE".
  */
 async function processExcelSource(fileOrBlob, indexTextOverride) {
   try {
@@ -807,6 +1106,70 @@ function getLastIndexText() {
     return null;
   }
 }
+
+/* ── Lưu / lấy danh sách Template đã tạo (localStorage) ──
+   mỗi template: { id, name, fileMode: "new"|"latest", from, to, steps: [5 id nút] } */
+const TEMPLATES_KEY = "excelDataTool_templates";
+
+function loadTemplates() {
+  try {
+    const raw = localStorage.getItem(TEMPLATES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (error) {
+    console.error("Không đọc được danh sách template:", error);
+    return [];
+  }
+}
+
+function saveTemplatesList(list) {
+  try {
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list));
+  } catch (error) {
+    console.error("Không lưu được danh sách template:", error);
+  }
+}
+
+/**
+ * Danh sách tất cả "nút" có thể chọn trong panel TEMPLATE: gồm mọi hàm
+ * (top-level) trong 3 module nút chuyển đổi (Button_chuyendoi_001,
+ * ChuyenDoi_Buoc_1, ChuyenDoi_Buoc_2) + vài thao tác tiện ích khác trên
+ * trang (tải JSON, copy kết quả) không nằm trong module nào.
+ */
+function buildActionRegistry() {
+  const registry = [];
+  const addModule = (moduleObj, moduleLabel) => {
+    if (!moduleObj) return;
+    Object.keys(moduleObj).forEach((key) => {
+      if (typeof moduleObj[key] === "function") {
+        registry.push({
+          id: `${moduleLabel}::${key}`,
+          label: `${moduleLabel} — ${key}`,
+          run: moduleObj[key],
+        });
+      }
+    });
+  };
+  addModule(Button_chuyendoi_001, "⚡ Công cụ chuyển đổi");
+  addModule(ChuyenDoi_Buoc_1, "① Bước 1");
+  addModule(ChuyenDoi_Buoc_2, "② Bước 2");
+  registry.push({
+    id: "meta::download",
+    label: "⬇ Tải link download JSON (ResID)",
+    run: generateDownloadLinkFromDiv,
+  });
+  registry.push({
+    id: "meta::copyResID",
+    label: "📋 Copy Result #01 (#ResID)",
+    run: () => copyElementTextToClipboard("ResID"),
+  });
+  registry.push({
+    id: "meta::copyResID05",
+    label: "📋 Copy #ResID05",
+    run: () => copyElementTextToClipboard("ResID05"),
+  });
+  return registry;
+}
+const actionRegistry = buildActionRegistry();
 
 /* ── Copy nội dung 1 phần tử (theo id) vào clipboard ── */
 function copyElementTextToClipboard(elementId) {
