@@ -286,11 +286,18 @@ function GetDocument() {
       alert("Chưa có file nào được lưu.");
       return false;
     }
-    const lastIndexText = getLastIndexText() || entry.indexText || undefined;
-    if (lastIndexText) SetIndexExcel(lastIndexText);
-    updateLastFileBadge("Đang dùng: " + entry.name);
-    await processExcelSource(entry.blob, lastIndexText);
-    return true;
+    try {
+      const file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa, luôn là bản mới nhất
+      const lastIndexText = getLastIndexText() || entry.indexText || undefined;
+      if (lastIndexText) SetIndexExcel(lastIndexText);
+      updateLastFileBadge("Đang dùng: " + entry.name);
+      await processExcelSource(file, lastIndexText);
+      return true;
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Không đọc được file gần nhất.");
+      return false;
+    }
   };
 
   /* Chọn 1 trong 4 file gần thứ 2-5 từ ô select: dùng đúng sheet đã lưu
@@ -302,9 +309,51 @@ function GetDocument() {
     const history = fileHistory.length ? fileHistory : await getFileHistory();
     const entry = history[idx];
     if (!entry) return;
-    SetIndexExcel(entry.indexText || "");
-    updateLastFileBadge("Đang dùng: " + entry.name);
-    await processExcelSource(entry.blob, entry.indexText || undefined);
+    try {
+      const file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa, luôn là bản mới nhất
+      SetIndexExcel(entry.indexText || "");
+      updateLastFileBadge("Đang dùng: " + entry.name);
+      await processExcelSource(file, entry.indexText || undefined);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Không đọc được file đã chọn.");
+    }
+  };
+
+  /* "📁 Chọn file": ưu tiên File System Access API để lấy "handle" trỏ vào
+     file thật trên đĩa (đọc lại được bản mới nhất mỗi lần dùng). Nếu trình
+     duyệt không hỗ trợ thì rơi về input file cũ (chỉ lưu được snapshot). */
+  const handleChonFileClick = async () => {
+    if (!supportsFSAccess) {
+      document.getElementById("input").click();
+      return;
+    }
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: "Excel",
+            accept: {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                [".xlsx"],
+              "application/vnd.ms-excel": [".xls"],
+            },
+          },
+        ],
+      });
+      const ok = await verifyPermission(handle);
+      if (!ok) {
+        alert("Không có quyền đọc file.");
+        return;
+      }
+      const file = await handle.getFile();
+      const indexText = $("#IndexExcel").text();
+      await processExcelSource(file, indexText);
+      const updated = await pushFileHistory({ file, handle }, indexText);
+      if (updated) setFileHistory(updated);
+    } catch (error) {
+      if (error && error.name !== "AbortError") console.error(error); // bỏ qua khi người dùng bấm huỷ picker
+    }
   };
 
   /* ── nạp lịch sử file đã lưu khi mở trang ── */
@@ -326,8 +375,9 @@ function GetDocument() {
       if (!file) return;
       const indexText = $("#IndexExcel").text();
       await processExcelSource(file, indexText);
-      // lưu lại file + sheet vừa lấy vào lịch sử 5 file gần nhất
-      const updated = await pushFileHistory(file, indexText);
+      // lưu lại file + sheet vừa lấy vào lịch sử 5 file gần nhất (không có
+      // handle vì đây là input file thường -> chỉ là bản snapshot lúc chọn)
+      const updated = await pushFileHistory({ file }, indexText);
       if (updated) setFileHistory(updated);
     };
     $("#headerID").hide();
@@ -367,7 +417,8 @@ function GetDocument() {
           }}
         />
 
-        <label
+        <button
+          type="button"
           style={styles.fileLabel}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = "translateY(-1px)";
@@ -378,10 +429,17 @@ function GetDocument() {
             e.currentTarget.style.transform = "translateY(0)";
             e.currentTarget.style.boxShadow = "0 2px 8px rgba(14,165,233,0.35)";
           }}
+          onClick={handleChonFileClick}
         >
           📁 Chọn file
-          <input type="file" id="input" style={styles.fileInput} />
-        </label>
+        </button>
+        {/* input file cũ: chỉ dùng khi trình duyệt không hỗ trợ File System Access API */}
+        <input
+          type="file"
+          id="input"
+          accept=".xlsx,.xls"
+          style={styles.fileInput}
+        />
 
         <button
           style={styles.btnPrimary}
@@ -635,6 +693,42 @@ function updateLastFileBadge(text) {
   if (badge) badge.textContent = text;
 }
 
+/* Trình duyệt có hỗ trợ File System Access API không (Chrome/Edge). Nếu có,
+   ta lưu lại "handle" trỏ tới file thật trên đĩa thay vì lưu nguyên nội dung
+   (blob) — nhờ vậy các nút "lấy file cũ" luôn đọc lại ĐÚNG nội dung MỚI NHẤT
+   của file, kể cả khi file đã bị sửa sau khi lưu vào lịch sử. */
+const supportsFSAccess =
+  typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+
+async function verifyPermission(handle, mode = "read") {
+  const opts = { mode };
+  if (typeof handle.queryPermission !== "function") return true;
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  if (typeof handle.requestPermission !== "function") return false;
+  return (await handle.requestPermission(opts)) === "granted";
+}
+
+/**
+ * Lấy nội dung file MỚI NHẤT cho 1 bản ghi trong lịch sử. Nếu bản ghi có
+ * "handle" (đọc trực tiếp từ đĩa) thì luôn trả về đúng nội dung hiện tại của
+ * file, dù file đã được chỉnh sửa từ lúc lưu. Chỉ khi trình duyệt không hỗ
+ * trợ (không có handle, chỉ có blob) thì mới dùng bản đã lưu — lúc đó có thể
+ * là nội dung cũ nếu file đã sửa sau khi chọn.
+ */
+async function getFreshFileFromEntry(entry) {
+  if (entry.handle) {
+    const ok = await verifyPermission(entry.handle);
+    if (!ok) {
+      throw new Error(
+        `Không có quyền đọc lại file "${entry.name}". Hãy chọn lại file.`,
+      );
+    }
+    return entry.handle.getFile(); // luôn đọc lại từ đĩa -> có bản edit mới nhất
+  }
+  if (entry.blob) return entry.blob;
+  throw new Error(`Không tìm thấy dữ liệu cho file "${entry.name}".`);
+}
+
 async function getFileHistory() {
   try {
     const db = await openLastFileDB();
@@ -651,16 +745,20 @@ async function getFileHistory() {
   }
 }
 
-async function pushFileHistory(file, indexText) {
+async function pushFileHistory({ file, handle }, indexText) {
   try {
     const db = await openLastFileDB();
     const history = await getFileHistory();
     const entry = {
-      blob: file,
       name: file.name,
       indexText: indexText || "",
       savedAt: Date.now(),
     };
+    if (handle) {
+      entry.handle = handle; // đọc lại được nội dung mới nhất từ đĩa mỗi lần dùng
+    } else {
+      entry.blob = file; // trình duyệt không hỗ trợ FS Access API: chỉ lưu được bản snapshot lúc chọn
+    }
     const updated = [entry, ...history].slice(0, FILE_HISTORY_LIMIT);
     await new Promise((resolve, reject) => {
       const tx = db.transaction(LAST_FILE_STORE, "readwrite");
