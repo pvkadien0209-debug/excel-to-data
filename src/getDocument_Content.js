@@ -148,6 +148,22 @@ const styles = {
     boxShadow: "0 2px 10px rgba(16,185,129,0.35)",
     transition: "transform .12s, box-shadow .12s",
   },
+  btnRemotion: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    padding: "0.55rem 1.15rem",
+    borderRadius: "10px",
+    border: "none",
+    cursor: "pointer",
+    fontWeight: 700,
+    fontSize: "0.82rem",
+    background: "linear-gradient(135deg, #f43f5e, #ec4899)",
+    color: "#fff",
+    boxShadow: "0 2px 10px rgba(244,63,94,0.35)",
+    transition: "transform .12s, box-shadow .12s",
+    marginLeft: "0.75rem",
+  },
   btnModule: {
     display: "inline-block",
     padding: "0.5rem 1rem",
@@ -258,6 +274,20 @@ const hoverProps = (base, hover) => ({
 function GetDocument() {
   const [IndexExcel, SetIndexExcel] = useState("1");
 
+  /* Bước "Lấy file gần nhất": nạp lại file đã lưu CÙNG với giá trị sheet
+     (vd "1-4") vừa nhập gần nhất, rồi xử lý y như chọn file thủ công. */
+  const handleLayFileGanNhat = async () => {
+    const record = await loadLastExcelFile();
+    if (!record) {
+      alert("Chưa có file nào được lưu.");
+      return false;
+    }
+    const lastIndexText = getLastIndexText();
+    if (lastIndexText) SetIndexExcel(lastIndexText);
+    await processExcelSource(record.blob, lastIndexText || undefined);
+    return true;
+  };
+
   /* ── URL param ── */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -268,18 +298,10 @@ function GetDocument() {
   /* ── file reader ── */
   useEffect(() => {
     const handleFileChange = async (event) => {
-      try {
-        const indexText = $("#IndexExcel").text();
-        const ArrIndex = parseSheetIndexInput(indexText);
-        let ArrOUT = [];
-        for (const e of ArrIndex) {
-          const rows = await readXlsxFile(event.target.files[0], { sheet: e });
-          ArrOUT.push(rows);
-        }
-        $("#ResID").text(JSON.stringify(ArrOUT));
-      } catch (error) {
-        console.error(error);
-      }
+      const file = event.target.files[0];
+      if (!file) return;
+      await processExcelSource(file);
+      saveLastExcelFile(file); // lưu lại file vừa chọn, dùng cho nút "Lấy file gần nhất"
     };
     $("#headerID").hide();
     const input = document.getElementById("input");
@@ -301,7 +323,11 @@ function GetDocument() {
 
         <input
           placeholder="Nhập ds sheet cần lấy…"
-          onChange={(e) => SetIndexExcel(e.currentTarget.value.trim())}
+          onChange={(e) => {
+            const value = e.currentTarget.value.trim();
+            SetIndexExcel(value);
+            saveLastIndexText(value); // để nút "Lấy file gần nhất" khôi phục lại đúng giá trị này
+          }}
           type="text"
           style={styles.textInput}
           onFocus={(e) => {
@@ -329,6 +355,24 @@ function GetDocument() {
           📁 Chọn file
           <input type="file" id="input" style={styles.fileInput} />
         </label>
+
+        <button
+          style={styles.btnPrimary}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow =
+              "0 4px 16px rgba(99,102,241,0.45)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow =
+              "0 2px 10px rgba(99,102,241,0.35)";
+          }}
+          onClick={handleLayFileGanNhat}
+        >
+          🕘 Lấy file gần nhất
+        </button>
+        <span style={styles.hint} id="LastFileNameID"></span>
 
         <button
           style={styles.btnDanger}
@@ -398,6 +442,33 @@ function GetDocument() {
         >
           ⬇ Lấy link download JSON TH | Tạo transMutiSet (A-B) từng lần 1 và bấm
         </button>
+
+        <button
+          style={styles.btnRemotion}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow = "0 4px 16px rgba(244,63,94,0.5)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow =
+              "0 2px 10px rgba(244,63,94,0.35)";
+          }}
+          onClick={async () => {
+            try {
+              // Bấm lần lượt từng nút, chờ có kết quả xong mới bấm nút tiếp theo
+              const daCoFile = await handleLayFileGanNhat(); // 1: "Lấy file gần nhất" (kèm sheet đã lưu, vd "1-4")
+              if (!daCoFile) return;
+              Button_chuyendoi_001.C_NextStep_DontUnifile(); // 2: "NextStepDontUnifile"
+              copyElementTextToClipboard("ResID"); // 3: "Copy" Result #01
+            } catch (error) {
+              console.error("Lỗi JSON REMOTION:", error);
+              alert("Có lỗi khi chạy JSON REMOTION: " + error.message);
+            }
+          }}
+        >
+          🎬 JSON REMOTION
+        </button>
       </div>
 
       {/* ─── RESULT STRIP ─── */}
@@ -423,19 +494,7 @@ function GetDocument() {
           e.currentTarget.style.transform = "translateY(0)";
           e.currentTarget.style.boxShadow = "0 2px 10px rgba(16,185,129,0.35)";
         }}
-        onClick={() => {
-          try {
-            const div = document.getElementById("ResID05");
-            const content = div.innerText;
-            const tempTextArea = document.createElement("textarea");
-            tempTextArea.value = content;
-            document.body.appendChild(tempTextArea);
-            tempTextArea.select();
-            document.execCommand("copy");
-            document.body.removeChild(tempTextArea);
-            alert("Content copied to clipboard!");
-          } catch (error) {}
-        }}
+        onClick={() => copyElementTextToClipboard("ResID05")}
       >
         📋 Copy nội dung table #ResID05
       </button>
@@ -486,6 +545,118 @@ function parseSheetIndexInput(text) {
   return Array.from(new Set(numbers))
     .sort((a, b) => a - b)
     .map(String);
+}
+
+/**
+ * Đọc 1 nguồn file Excel (File từ input, hoặc Blob lấy từ IndexedDB) theo
+ * danh sách sheet đang nhập (hoặc indexTextOverride nếu truyền vào), rồi ghi
+ * kết quả JSON ra #ResID. Dùng chung cho input file, nút "Lấy file gần nhất"
+ * và nút "JSON REMOTION".
+ */
+async function processExcelSource(fileOrBlob, indexTextOverride) {
+  try {
+    const indexText = indexTextOverride ?? $("#IndexExcel").text();
+    const ArrIndex = parseSheetIndexInput(indexText);
+    let ArrOUT = [];
+    for (const e of ArrIndex) {
+      const rows = await readXlsxFile(fileOrBlob, { sheet: e });
+      ArrOUT.push(rows);
+    }
+    $("#ResID").text(JSON.stringify(ArrOUT));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+/* ── Lưu / lấy lại file excel đã chọn gần nhất (IndexedDB) ── */
+const LAST_FILE_DB_NAME = "excelDataTool_LastFileDB";
+const LAST_FILE_STORE = "lastExcelFile";
+
+function openLastFileDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(LAST_FILE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(LAST_FILE_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveLastExcelFile(file) {
+  try {
+    const db = await openLastFileDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readwrite");
+      tx.objectStore(LAST_FILE_STORE).put(
+        { blob: file, name: file.name, savedAt: Date.now() },
+        "latest",
+      );
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    const badge = document.getElementById("LastFileNameID");
+    if (badge) badge.textContent = "Đã lưu: " + file.name;
+  } catch (error) {
+    console.error("Không lưu được file gần nhất:", error);
+  }
+}
+
+async function loadLastExcelFile() {
+  try {
+    const db = await openLastFileDB();
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readonly");
+      const req = tx.objectStore(LAST_FILE_STORE).get("latest");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    const badge = document.getElementById("LastFileNameID");
+    if (badge) {
+      badge.textContent = record
+        ? "Đang dùng: " + record.name
+        : "Chưa có file đã lưu";
+    }
+    return record;
+  } catch (error) {
+    console.error("Không lấy được file gần nhất:", error);
+    return null;
+  }
+}
+
+/* ── Lưu / lấy lại giá trị sheet (vd "1-4") vừa nhập gần nhất (localStorage) ── */
+const LAST_INDEX_TEXT_KEY = "excelDataTool_lastIndexText";
+
+function saveLastIndexText(text) {
+  try {
+    localStorage.setItem(LAST_INDEX_TEXT_KEY, text);
+  } catch (error) {
+    console.error("Không lưu được giá trị sheet vừa nhập:", error);
+  }
+}
+
+function getLastIndexText() {
+  try {
+    return localStorage.getItem(LAST_INDEX_TEXT_KEY);
+  } catch (error) {
+    return null;
+  }
+}
+
+/* ── Copy nội dung 1 phần tử (theo id) vào clipboard ── */
+function copyElementTextToClipboard(elementId) {
+  try {
+    const div = document.getElementById(elementId);
+    if (!div) return;
+    const content = div.innerText || div.textContent;
+    const tempTextArea = document.createElement("textarea");
+    tempTextArea.value = content;
+    document.body.appendChild(tempTextArea);
+    tempTextArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(tempTextArea);
+    alert("Content copied to clipboard!");
+  } catch (error) {}
 }
 
 function showButton(ArrBTN, color) {
