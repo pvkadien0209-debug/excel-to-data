@@ -284,14 +284,14 @@ function GetDocument() {
   // 5 file gần nhất đã chọn (kèm sheet đã lấy) — [0] mới nhất, [1..4] cho ô select
   const [fileHistory, setFileHistory] = useState([]);
 
-  // ── danh sách template đã lưu (localStorage) + template đang chọn để chạy ──
+  // ── danh sách template đã lưu (IndexedDB) + template đang chọn để chạy ──
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   // ── state cho popup "➕ Tạo Template" ──
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [formName, setFormName] = useState("");
-  const [formFileMode, setFormFileMode] = useState("new"); // "new" = luôn chọn file khi chạy | "latest" = luôn dùng file mới nhất đã lưu
+  const [formPickedFile, setFormPickedFile] = useState(null); // {file, handle, name} — file trên máy đã chọn cho template này
   const [formFrom, setFormFrom] = useState("");
   const [formTo, setFormTo] = useState("");
   const [formSteps, setFormSteps] = useState(["", "", "", "", ""]); // id nút mỗi bước, "" = không chọn (null)
@@ -413,31 +413,31 @@ function GetDocument() {
     if (updated) setFileHistory(updated);
   };
 
-  /* Chạy 1 template (config = {name, fileMode, from, to, steps}): lấy file
-     theo fileMode ("new" = mở hộp thoại chọn file, "latest" = luôn dùng file
-     mới nhất đã lưu), lấy đúng khoảng sheet từ-đến, lưu lại file + sheet đó
-     vào lịch sử (giống hành vi "Chọn file"/"Lấy file gần nhất"), rồi bấm LẦN
-     LƯỢT các nút đã chọn ở từng bước — bước nào để trống thì bỏ qua, chờ bước
-     trước có kết quả xong mới sang bước sau. */
+  /* Chạy 1 template (config = {name, fileHandle, fileBlob, fileName, from, to,
+     steps}): mỗi template đã được gắn CỐ ĐỊNH với 1 file chọn từ máy lúc tạo
+     (fileHandle nếu trình duyệt hỗ trợ đọc lại từ đĩa, else fileBlob snapshot)
+     — không còn hỏi lại "chọn file mới hay lấy file mới nhất" mỗi lần chạy.
+     Lấy đúng khoảng sheet từ-đến, lưu lại file + sheet đó vào lịch sử (giống
+     hành vi "Chọn file"/"Lấy file gần nhất"), rồi bấm LẦN LƯỢT các nút đã chọn
+     ở từng bước — bước nào để trống thì bỏ qua, chờ bước trước có kết quả
+     xong mới sang bước sau. */
   const handleRunTemplateConfig = async (config) => {
     try {
-      let file, handle, name;
-      if (config.fileMode === "latest") {
-        const history = fileHistory.length
-          ? fileHistory
-          : await getFileHistory();
-        const entry = history[0];
-        if (!entry) {
-          alert("Chưa có file nào được lưu để dùng làm 'file mới nhất'.");
-          return;
-        }
-        file = await getFreshFileFromEntry(entry); // đọc lại từ đĩa nếu có handle
-        handle = entry.handle;
-        name = entry.name;
-      } else {
-        const picked = await pickNewExcelFile();
-        if (!picked) return;
-        ({ file, handle, name } = picked);
+      const handle = config.fileHandle;
+      const name = config.fileName;
+      let file;
+      try {
+        file = await getFreshFileFromEntry({
+          handle: config.fileHandle,
+          blob: config.fileBlob,
+          name: config.fileName,
+        });
+      } catch (error) {
+        alert(
+          (error && error.message) ||
+            `Không đọc được file đã gắn với template "${config.name}". Hãy tạo lại template và chọn file khác.`,
+        );
+        return;
       }
 
       const from = (config.from || "").trim();
@@ -474,46 +474,63 @@ function GetDocument() {
   /* Nút "➕ Tạo Template": mở popup với form trống. */
   const openCreateTemplateModal = () => {
     setFormName("");
-    setFormFileMode("new");
+    setFormPickedFile(null);
     setFormFrom("");
     setFormTo("");
     setFormSteps(["", "", "", "", ""]);
     setTemplateModalOpen(true);
   };
 
-  /* Nút "💾 Lưu Template" trong popup: thêm vào danh sách, lưu localStorage,
+  /* Nút "📁 Chọn file trên máy" trong popup: mở hộp thoại chọn file 1 LẦN
+     DUY NHẤT lúc tạo template, lưu cố định lại {file, handle, name} — mỗi
+     template chỉ gắn với đúng 1 đường dẫn/1 file đó, không đổi khi chạy. */
+  const handlePickFileForTemplate = async () => {
+    const picked = await pickNewExcelFile();
+    if (!picked) return;
+    setFormPickedFile(picked);
+  };
+
+  /* Nút "💾 Lưu Template" trong popup: bắt buộc đã chọn file, thêm vào danh
+     sách, lưu IndexedDB (cần vì fileHandle không thể JSON.stringify được),
      cho phép tạo nhiều template khác nhau, mỗi cái 1 tên riêng. */
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
+    if (!formPickedFile) {
+      alert("Hãy chọn file trên máy cho template này trước khi lưu.");
+      return;
+    }
     const newTemplate = {
       id: Date.now().toString(),
       name: formName.trim() || `Template ${templates.length + 1}`,
-      fileMode: formFileMode,
+      fileHandle: formPickedFile.handle || null,
+      fileBlob: formPickedFile.handle ? null : formPickedFile.file,
+      fileName: formPickedFile.name,
       from: formFrom.trim(),
       to: formTo.trim(),
       steps: formSteps,
     };
     const updated = [...templates, newTemplate];
     setTemplates(updated);
-    saveTemplatesList(updated);
+    await saveTemplatesList(updated);
     setSelectedTemplateId(newTemplate.id);
     setTemplateModalOpen(false);
   };
 
-  /* Nút "🗑" cạnh select: xoá template đang chọn khỏi danh sách. */
-  const handleDeleteSelectedTemplate = () => {
-    if (!selectedTemplateId) return;
-    const tpl = templates.find((t) => t.id === selectedTemplateId);
+  /* Xoá 1 template theo id — dùng chung cho nút "🗑" cạnh select lẫn nút xoá
+     từng dòng trong danh sách "Template đã lưu" bên trong popup. */
+  const handleDeleteTemplateById = async (id) => {
+    if (!id) return;
+    const tpl = templates.find((t) => t.id === id);
     if (tpl && !window.confirm(`Xoá template "${tpl.name}"?`)) return;
-    const updated = templates.filter((t) => t.id !== selectedTemplateId);
+    const updated = templates.filter((t) => t.id !== id);
     setTemplates(updated);
-    saveTemplatesList(updated);
-    setSelectedTemplateId("");
+    await saveTemplatesList(updated);
+    if (selectedTemplateId === id) setSelectedTemplateId("");
   };
 
   /* ── nạp lịch sử file + danh sách template đã lưu khi mở trang ── */
   useEffect(() => {
     getFileHistory().then(setFileHistory);
-    setTemplates(loadTemplates());
+    loadTemplates().then(setTemplates);
   }, []);
 
   /* ── URL param + ẩn header mặc định ── */
@@ -742,7 +759,7 @@ function GetDocument() {
         {selectedTemplateId && (
           <button
             style={styles.btnDanger}
-            onClick={handleDeleteSelectedTemplate}
+            onClick={() => handleDeleteTemplateById(selectedTemplateId)}
             title="Xoá template đang chọn"
           >
             🗑
@@ -793,62 +810,66 @@ function GetDocument() {
 
             <div
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "1rem",
+                display: "grid",
+                gridTemplateColumns: "1fr auto auto",
+                gap: "0.5rem",
+                alignItems: "end",
                 marginBottom: "1rem",
               }}
             >
-              <label style={{ ...styles.formLabel, minWidth: "220px" }}>
-                Lấy file nào
-                <select
-                  style={styles.textInput}
-                  value={formFileMode}
-                  onChange={(e) => setFormFileMode(e.target.value)}
-                >
-                  <option value="new">📁 Chọn file mới mỗi lần chạy</option>
-                  <option value="latest">🕘 Luôn dùng file mới nhất đã lưu</option>
-                </select>
-              </label>
-
               <label style={styles.formLabel}>
-                Lấy số từ mấy đến mấy
-                <span style={{ display: "inline-flex", gap: "0.4rem" }}>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Từ"
-                    style={{ ...styles.textInput, width: "70px", flex: "none" }}
-                    value={formFrom}
-                    onChange={(e) => setFormFrom(e.target.value)}
-                  />
-                  <span style={{ alignSelf: "center" }}>→</span>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Đến"
-                    style={{ ...styles.textInput, width: "70px", flex: "none" }}
-                    value={formTo}
-                    onChange={(e) => setFormTo(e.target.value)}
-                  />
-                </span>
+                File trên máy (chỉ chọn 1 lần, gắn cố định vào template)
+                <button
+                  type="button"
+                  style={{
+                    ...styles.fileLabel,
+                    justifyContent: "center",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                  onClick={handlePickFileForTemplate}
+                >
+                  📁{" "}
+                  {formPickedFile
+                    ? formPickedFile.name
+                    : "Chọn file trên máy…"}
+                </button>
+              </label>
+              <label style={{ ...styles.formLabel, width: "64px" }}>
+                Từ
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Từ"
+                  style={{ ...styles.textInput, width: "64px" }}
+                  value={formFrom}
+                  onChange={(e) => setFormFrom(e.target.value)}
+                />
+              </label>
+              <label style={{ ...styles.formLabel, width: "64px" }}>
+                Đến
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Đến"
+                  style={{ ...styles.textInput, width: "64px" }}
+                  value={formTo}
+                  onChange={(e) => setFormTo(e.target.value)}
+                />
               </label>
             </div>
 
             <div
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "1rem",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+                gap: "0.5rem",
                 marginBottom: "1rem",
               }}
             >
               {formSteps.map((stepValue, i) => (
-                <label
-                  key={i}
-                  style={{ ...styles.formLabel, minWidth: "220px" }}
-                >
-                  {`Nút thứ ${i + 1} bấm là nút nào`}
+                <label key={i} style={styles.formLabel}>
+                  {`Bước ${i + 1}`}
                   <select
                     style={styles.textInput}
                     value={stepValue}
@@ -869,7 +890,7 @@ function GetDocument() {
               ))}
             </div>
 
-            <div style={{ display: "flex", gap: "0.6rem" }}>
+            <div style={{ display: "flex", gap: "0.6rem", marginBottom: "1rem" }}>
               <button style={styles.btnRemotion} onClick={handleSaveTemplate}>
                 💾 Lưu Template
               </button>
@@ -880,6 +901,67 @@ function GetDocument() {
                 Huỷ
               </button>
             </div>
+
+            {templates.length > 0 && (
+              <div
+                style={{
+                  borderTop: "1px solid rgba(255,255,255,0.1)",
+                  paddingTop: "0.75rem",
+                }}
+              >
+                <div style={{ ...styles.label, marginBottom: "0.5rem" }}>
+                  Template đã lưu ({templates.length})
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.35rem",
+                    maxHeight: "160px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {templates.map((t) => (
+                    <div
+                      key={t.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "8px",
+                        padding: "0.35rem 0.6rem",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={t.fileName}
+                      >
+                        {t.name}{" "}
+                        <span style={{ color: "#64748b" }}>
+                          ({t.fileName || "?"})
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        style={{ ...styles.btnDanger, padding: "0.25rem 0.55rem" }}
+                        onClick={() => handleDeleteTemplateById(t.id)}
+                        title={`Xoá template "${t.name}"`}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1107,23 +1189,39 @@ function getLastIndexText() {
   }
 }
 
-/* ── Lưu / lấy danh sách Template đã tạo (localStorage) ──
-   mỗi template: { id, name, fileMode: "new"|"latest", from, to, steps: [5 id nút] } */
-const TEMPLATES_KEY = "excelDataTool_templates";
+/* ── Lưu / lấy danh sách Template đã tạo (IndexedDB) ──
+   Phải dùng IndexedDB (không phải localStorage) vì mỗi template giờ gắn cố
+   định 1 file chọn từ máy qua "fileHandle" (FileSystemFileHandle) — object
+   này KHÔNG thể JSON.stringify được, nên phải lưu bằng structured clone của
+   IndexedDB. mỗi template:
+   { id, name, fileHandle, fileBlob, fileName, from, to, steps: [5 id nút] } */
+const TEMPLATES_KEY = "templates";
 
-function loadTemplates() {
+async function loadTemplates() {
   try {
-    const raw = localStorage.getItem(TEMPLATES_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const db = await openLastFileDB();
+    const list = await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readonly");
+      const req = tx.objectStore(LAST_FILE_STORE).get(TEMPLATES_KEY);
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    return list;
   } catch (error) {
     console.error("Không đọc được danh sách template:", error);
     return [];
   }
 }
 
-function saveTemplatesList(list) {
+async function saveTemplatesList(list) {
   try {
-    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list));
+    const db = await openLastFileDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(LAST_FILE_STORE, "readwrite");
+      tx.objectStore(LAST_FILE_STORE).put(list, TEMPLATES_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
   } catch (error) {
     console.error("Không lưu được danh sách template:", error);
   }
