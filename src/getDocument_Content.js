@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import $ from "jquery";
-import readXlsxFile from "read-excel-file";
+import readXlsxFile, { readSheetNames } from "read-excel-file";
 import * as Button_chuyendoi_001 from "./create/getDocumentContent_helper_function/Button_chuyendoi_001";
 import * as ChuyenDoi_Buoc_1 from "./create/getDocumentContent_helper_function/JSON_chuyendoiSangDangThucbang";
 import * as ChuyenDoi_Buoc_2 from "./create/getDocumentContent_helper_function/Create_A_InputData_Tranfer_2024_HOPEFINAL_C001";
@@ -284,6 +284,13 @@ function GetDocument() {
   // 5 file gần nhất đã chọn (kèm sheet đã lấy) — [0] mới nhất, [1..4] cho ô select
   const [fileHistory, setFileHistory] = useState([]);
 
+  // "Số dòng Excel cần lấy" (SODONGEXCELCANLAYID) — trước đây CHỈ set được qua
+  // param URL ?row=, nên khi chạy TEMPLATE (không đi qua URL) giá trị này hay
+  // bị "quên", dùng nhầm giá trị mặc định/giá trị của lần chạy trước, làm sai
+  // kết quả khi file cần 1 số dòng khác. Giờ đưa vào state để: (1) có thể sửa
+  // trực tiếp trên UI, (2) mỗi template lưu lại đúng giá trị của riêng nó.
+  const [rowCount, setRowCount] = useState("4");
+
   // ── danh sách template đã lưu (IndexedDB) + template đang chọn để chạy ──
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -294,6 +301,7 @@ function GetDocument() {
   const [formPickedFile, setFormPickedFile] = useState(null); // {file, handle, name} — file trên máy đã chọn cho template này
   const [formFrom, setFormFrom] = useState("");
   const [formTo, setFormTo] = useState("");
+  const [formRow, setFormRow] = useState(""); // "Số dòng Excel cần lấy" riêng cho template này
   const [formSteps, setFormSteps] = useState(["", "", "", "", ""]); // id nút mỗi bước, "" = không chọn (null)
 
   /* Bước "Lấy file gần nhất": nạp lại file đã lưu gần nhất (fileHistory[0])
@@ -447,6 +455,14 @@ function GetDocument() {
       else if (from) sheetText = from;
       else sheetText = getLastIndexText() || $("#IndexExcel").text();
 
+      // set "Số dòng Excel cần lấy" ĐÚNG theo template này TRƯỚC khi xử lý —
+      // trước đây bước này hay bị bỏ quên nên template lấy nhầm số dòng của
+      // lần chạy trước hoặc mặc định, làm sai kết quả khi file cần số khác.
+      const rowText = (config.row || "").trim() || getLastRowText() || $("#SODONGEXCELCANLAYID").text();
+      $("#SODONGEXCELCANLAYID").text(rowText); // set DOM ngay, không chờ React render kịp trước khi các nút bước sau đọc giá trị này
+      setRowCount(rowText);
+      saveLastRowText(rowText);
+
       SetIndexExcel(sheetText);
       saveLastIndexText(sheetText);
       updateLastFileBadge(
@@ -477,6 +493,7 @@ function GetDocument() {
     setFormPickedFile(null);
     setFormFrom("");
     setFormTo("");
+    setFormRow(rowCount); // mặc định lấy đúng số dòng đang dùng hiện tại, sửa được nếu file này cần khác
     setFormSteps(["", "", "", "", ""]);
     setTemplateModalOpen(true);
   };
@@ -506,6 +523,7 @@ function GetDocument() {
       fileName: formPickedFile.name,
       from: formFrom.trim(),
       to: formTo.trim(),
+      row: formRow.trim(),
       steps: formSteps,
     };
     const updated = [...templates, newTemplate];
@@ -533,11 +551,12 @@ function GetDocument() {
     loadTemplates().then(setTemplates);
   }, []);
 
-  /* ── URL param + ẩn header mặc định ── */
+  /* ── URL param ?row= (ưu tiên) hoặc giá trị đã lưu lần trước + ẩn header mặc định ── */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const rowParam = params.get("row");
-    document.getElementById("SODONGEXCELCANLAYID").textContent = rowParam || 4;
+    const initialRow = rowParam || getLastRowText() || "4";
+    setRowCount(initialRow);
     $("#headerID").hide();
   }, []);
 
@@ -552,7 +571,8 @@ function GetDocument() {
         </span>
 
         <input
-          placeholder="Nhập ds sheet cần lấy…"
+          placeholder="VD: 1,3,5-8 hoặc 11-C (C = đến sheet cuối)"
+          title={`Hỗ trợ danh sách "1,2,3", khoảng "1-4", kết hợp "2,6-8", và "<n>-C" = từ n đến hết sheet cuối cùng`}
           onChange={(e) => {
             const value = e.currentTarget.value.trim();
             SetIndexExcel(value);
@@ -654,11 +674,23 @@ function GetDocument() {
         </button>
 
         <span style={styles.rowBadge}>
-          Rows:&nbsp;<b id="SODONGEXCELCANLAYID">4</b>
+          Rows:&nbsp;<b id="SODONGEXCELCANLAYID">{rowCount}</b>
         </span>
+        <input
+          type="number"
+          min="1"
+          title="Số dòng Excel cần lấy (SODONGEXCELCANLAYID) — sửa trực tiếp ở đây, không cần dùng param ?row= trên URL nữa"
+          style={{ ...styles.textInput, flex: "none", width: "70px" }}
+          value={rowCount}
+          onChange={(e) => {
+            const value = e.target.value;
+            setRowCount(value);
+            saveLastRowText(value); // để lần sau mở lại trang / chạy template khác vẫn nhớ đúng số dòng
+          }}
+        />
         <span style={styles.hint}>
-          Dùng param <code style={{ color: "#fbbf24" }}>?row=</code> để set số
-          dòng
+          (hoặc dùng param <code style={{ color: "#fbbf24" }}>?row=</code> trên
+          URL)
         </span>
       </div>
 
@@ -811,7 +843,7 @@ function GetDocument() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr auto auto",
+                gridTemplateColumns: "1fr auto auto auto",
                 gap: "0.5rem",
                 alignItems: "end",
                 marginBottom: "1rem",
@@ -851,12 +883,14 @@ function GetDocument() {
                   onChange={(e) => setFormFrom(e.target.value)}
                 />
               </label>
-              <label style={{ ...styles.formLabel, width: "64px" }}>
+              <label
+                style={{ ...styles.formLabel, width: "64px" }}
+                title={`Nhập số, hoặc "C" = đến hết sheet cuối cùng (vd Từ=11, Đến=C)`}
+              >
                 Đến
                 <input
-                  type="number"
-                  min="1"
-                  placeholder="Đến"
+                  type="text"
+                  placeholder="Đến / C"
                   style={{
                     ...styles.textInput,
                     flex: "none",
@@ -865,6 +899,25 @@ function GetDocument() {
                   }}
                   value={formTo}
                   onChange={(e) => setFormTo(e.target.value)}
+                />
+              </label>
+              <label
+                style={{ ...styles.formLabel, width: "72px" }}
+                title="Số dòng Excel cần lấy (SODONGEXCELCANLAYID) riêng cho template này — hay bị quên, làm sai kết quả nếu file cần số khác"
+              >
+                Rows
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Rows"
+                  style={{
+                    ...styles.textInput,
+                    flex: "none",
+                    width: "72px",
+                    boxSizing: "border-box",
+                  }}
+                  value={formRow}
+                  onChange={(e) => setFormRow(e.target.value)}
                 />
               </label>
             </div>
@@ -1032,6 +1085,11 @@ export default GetDocument;
  * Đồng thời tự đoán các trường hợp bấm nhầm phổ biến:
  *  - Đảo chiều khoảng:       "8-6"          -> hiểu như "6-8" -> 6,7,8
  *  - Trùng lặp giữa danh sách và khoảng: "3,1-4" -> 1,2,3,4 (bỏ trùng)
+ *
+ * Riêng cú pháp "<n>-C" (vd "11-C", "10-c") — nghĩa là "từ sheet n lấy đến
+ * HẾT (sheet cuối cùng), tăng dần +1" — được hiểu ở bước resolveSheetRangeEnd
+ * bên dưới (cần đọc file để biết tổng số sheet) rồi mới truyền text đã thay
+ * "C" bằng số cuối cùng vào hàm này, nên hàm này chỉ nhận số thuần.
  */
 function parseSheetIndexInput(text) {
   const cleaned = (text || "").split(" ").join("");
@@ -1059,6 +1117,26 @@ function parseSheetIndexInput(text) {
 }
 
 /**
+ * Thay "C"/"c" ở cuối 1 khoảng (vd "11-C", "10-c,2") bằng số thứ tự sheet
+ * CUỐI CÙNG thật sự có trong file — để gõ "11-C" thay vì phải tự đếm rồi gõ
+ * "11-22". Chỉ đọc thêm tên các sheet (readSheetNames — rất nhẹ, không đọc
+ * dữ liệu) khi input THỰC SỰ có dùng "C", để khỏi tốn thêm 1 lượt đọc file
+ * cho các trường hợp thông thường không dùng cú pháp này.
+ */
+async function resolveSheetRangeEnd(text, fileOrBlob) {
+  const cleaned = (text || "").split(" ").join("");
+  if (!/-c(?=,|$)/i.test(cleaned)) return cleaned; // không dùng "C" -> giữ nguyên
+  try {
+    const sheetNames = await readSheetNames(fileOrBlob);
+    const lastIndex = sheetNames.length;
+    return cleaned.replace(/-c(?=,|$)/gi, `-${lastIndex}`);
+  } catch (error) {
+    console.error("Không lấy được tổng số sheet để hiểu 'C' (đến cuối):", error);
+    return cleaned; // để nguyên -> "C" không phải số nên khoảng đó sẽ bị bỏ qua
+  }
+}
+
+/**
  * Đọc 1 nguồn file Excel (File từ input, hoặc Blob lấy từ IndexedDB) theo
  * danh sách sheet đang nhập (hoặc indexTextOverride nếu truyền vào), rồi ghi
  * kết quả JSON ra #ResID. Dùng chung cho input file, nút "Lấy file gần nhất"
@@ -1066,7 +1144,8 @@ function parseSheetIndexInput(text) {
  */
 async function processExcelSource(fileOrBlob, indexTextOverride) {
   try {
-    const indexText = indexTextOverride ?? $("#IndexExcel").text();
+    const rawIndexText = indexTextOverride ?? $("#IndexExcel").text();
+    const indexText = await resolveSheetRangeEnd(rawIndexText, fileOrBlob);
     const ArrIndex = parseSheetIndexInput(indexText);
     let ArrOUT = [];
     for (const e of ArrIndex) {
@@ -1200,6 +1279,26 @@ function saveLastIndexText(text) {
 function getLastIndexText() {
   try {
     return localStorage.getItem(LAST_INDEX_TEXT_KEY);
+  } catch (error) {
+    return null;
+  }
+}
+
+/* ── Lưu / lấy lại "Số dòng Excel cần lấy" (SODONGEXCELCANLAYID) vừa dùng gần
+   nhất (localStorage) — để không phải phụ thuộc mỗi param ?row= trên URL. ── */
+const LAST_ROW_TEXT_KEY = "excelDataTool_lastRowText";
+
+function saveLastRowText(text) {
+  try {
+    localStorage.setItem(LAST_ROW_TEXT_KEY, text);
+  } catch (error) {
+    console.error("Không lưu được giá trị số dòng vừa nhập:", error);
+  }
+}
+
+function getLastRowText() {
+  try {
+    return localStorage.getItem(LAST_ROW_TEXT_KEY);
   } catch (error) {
     return null;
   }

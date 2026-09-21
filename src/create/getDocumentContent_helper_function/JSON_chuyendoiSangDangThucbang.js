@@ -555,7 +555,16 @@ function sanitizeForJsonTemplate(value) {
   const safe = String(value).split(`"`).join(`'`); // giữ hành vi cũ: " -> ' để không phá JSON
   return JSON.stringify(safe).slice(1, -1); // escape đúng chuẩn JSON (\n, \\, \t, ...), bỏ 2 dấu " bao ngoài
 }
-function FN_ZZZZA1_HD01() {
+/**
+ * Logic tính toán chung của FN_ZZZZA1_HD01 — tách riêng ra để cả bản export
+ * "cũ" (đủ mọi sheet) lẫn bản "New" (rút gọn khi xuất) đều dùng chung, không
+ * lặp lại code. Trả về:
+ *  - res:    danh sách JSON "CHƯA thay thế" qua nextStepOutside (dữ liệu đã
+ *            điền vào template nhưng chưa qua bước biến đổi/thay thế cuối)
+ *  - res_02: danh sách bảng Excel "ĐÃ thay thế" (đã qua nextStepOutside +
+ *            FN_A1 rồi mới ghép thành bảng)
+ */
+function computeZZZZA1_HD01_Result() {
   let data_ZZZZA1 = JSON.parse($("#ResID02").text());
   let Data_hd = JSON.parse($("#ResID03").text());
   let Data_hd_excel = JSON.parse($("#ResID04").text());
@@ -609,8 +618,61 @@ function FN_ZZZZA1_HD01() {
     }
     res_02.push(mergedData);
   });
-  exportToExcel(res.concat(res_02));
-  console.log(JSON.stringify(res));
+  return { res, res_02 };
+}
+
+async function FN_ZZZZA1_HD01(overwrite) {
+  // Bọc try/catch + alert: trước đây nếu bước này lỗi (vd chưa bấm
+  // "LayBangZZZZA1" nên #ResID02/03/04 rỗng) thì KHÔNG có gì hiện ra — lỗi
+  // chỉ nằm im trong console, trông như "bấm nút mà không có gì xảy ra".
+  // Giờ báo rõ bằng alert để biết ngay lý do vì sao không xuất được file.
+  try {
+    const { res, res_02 } = computeZZZZA1_HD01_Result();
+    const exportData = res.concat(res_02);
+    if (overwrite) {
+      await exportToExcelOverwrite(exportData, {
+        suggestedName: "B_FILE_GHIDE.xlsx",
+        handleKey: EXPORT_HANDLE_KEY_GHIDE,
+        label: "GHI ĐÈ",
+      });
+    } else {
+      exportToExcel(exportData);
+    }
+    console.log(JSON.stringify(res));
+  } catch (error) {
+    console.error("Lỗi khi xuất file Excel (FN_ZZZZA1_HD01):", error);
+    alert(
+      "Không xuất được file. Có thể do chưa bấm 'LayBangZZZZA1' để lấy dữ liệu trước, hoặc dữ liệu bị lỗi.\nChi tiết lỗi: " +
+        (error && error.message),
+    );
+  }
+}
+
+/**
+ * Bản "New": giống hệt FN_ZZZZA1_HD01 nhưng file xuất ra CHỈ lấy 1 sheet ĐẠI
+ * DIỆN cho phần "chưa thay thế" (res[0]) thay vì đủ N sheet như bản cũ — vì
+ * các sheet "chưa thay thế" giống hệt nhau về cấu trúc nên chỉ cần xem 1 cái
+ * làm mẫu; phần "đã thay thế" (res_02) vẫn giữ ĐỦ như cũ. Luôn GHI ĐÈ lên
+ * file đã xuất lần trước (không tạo file mới) để dùng qua TEMPLATE cho nhanh.
+ */
+async function FN_ZZZZA1_HD01_New() {
+  try {
+    const { res, res_02 } = computeZZZZA1_HD01_Result();
+    const representative = res.length ? [res[0]] : []; // chỉ 1 sheet đại diện, không lặp lại N lần
+    const exportData = representative.concat(res_02);
+    await exportToExcelOverwrite(exportData, {
+      suggestedName: "B_FILE_01NEW.xlsx",
+      handleKey: EXPORT_HANDLE_KEY_NEW,
+      label: "NEW",
+    });
+    console.log(JSON.stringify(res));
+  } catch (error) {
+    console.error("Lỗi khi xuất file Excel (FN_ZZZZA1_HD01_New):", error);
+    alert(
+      "Không xuất được file. Có thể do chưa bấm 'LayBangZZZZA1_New' để lấy dữ liệu trước, hoặc dữ liệu bị lỗi.\nChi tiết lỗi: " +
+        (error && error.message),
+    );
+  }
 }
 const exportToExcel = (data) => {
   const wb = XLSX.utils.book_new();
@@ -618,19 +680,161 @@ const exportToExcel = (data) => {
     const ws = XLSX.utils.aoa_to_sheet(e);
     XLSX.utils.book_append_sheet(wb, ws, `${i + 1}`);
   });
-  XLSX.writeFile(wb, "B_FILE_01.xlsx");
+  XLSX.writeFile(wb, "B_FILE_01.xlsx"); // luôn tạo 1 file MỚI (trình duyệt tự thêm hậu tố (1), (2)... nếu trùng tên)
 };
+
+/* ── Lưu lại "file handle" (File System Access API) của file Excel đã xuất
+   lần gần nhất, để nút "ghi đè" GHI ĐÈ LÊN ĐÚNG file đó ở các lần xuất sau —
+   kể cả khi chạy qua TEMPLATE nhiều lần liên tiếp — thay vì tạo file mới/hỏi
+   lại nơi lưu mỗi lần. Lưu bằng IndexedDB (không phải localStorage) vì
+   FileSystemFileHandle không thể JSON.stringify được.
+   2 biến thể "GhiDe" và "New" dùng 2 KEY RIÊNG (handle khác nhau, file khác
+   nhau) — để bấm cái này không làm mất/ghi nhầm vào file của cái kia. */
+const EXPORT_HANDLE_DB_NAME = "excelDataTool_ExportFileHandleDB";
+const EXPORT_HANDLE_STORE = "exportHandle";
+const EXPORT_HANDLE_KEY_GHIDE = "lastExportHandle_GhiDe"; // cho DaCo_..._GhiDeFileCu -> B_FILE_GHIDE.xlsx
+const EXPORT_HANDLE_KEY_NEW = "lastExportHandle_New"; // cho DaCo_..._New -> B_FILE_01NEW.xlsx
+
+function openExportHandleDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(EXPORT_HANDLE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(EXPORT_HANDLE_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getSavedExportHandle(handleKey) {
+  try {
+    const db = await openExportHandleDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(EXPORT_HANDLE_STORE, "readonly");
+      const req = tx.objectStore(EXPORT_HANDLE_STORE).get(handleKey);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (error) {
+    return null;
+  }
+}
+
+async function saveExportHandle(handleKey, handle) {
+  try {
+    const db = await openExportHandleDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(EXPORT_HANDLE_STORE, "readwrite");
+      tx.objectStore(EXPORT_HANDLE_STORE).put(handle, handleKey);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error("Không lưu được file handle xuất Excel:", error);
+  }
+}
+
+async function verifyExportWritePermission(handle) {
+  const opts = { mode: "readwrite" };
+  if (typeof handle.queryPermission !== "function") return true;
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  if (typeof handle.requestPermission !== "function") return false;
+  return (await handle.requestPermission(opts)) === "granted";
+}
+
+/* Xuất workbook GHI ĐÈ lên đúng file đã chọn ở lần xuất trước (nếu có) —
+   NẾU CHƯA CÓ (lần đầu tiên dùng biến thể này) thì coi như "tạo file thứ 1":
+   mở hộp thoại chọn nơi lưu 1 LẦN DUY NHẤT — đây cũng chính là bước "tải về"
+   của lần đầu, y như nút gốc luôn tự tải về vậy, chỉ khác là được NHỚ LẠI
+   cho các lần ghi đè sau, không cần chọn lại/tải thêm bản mới mỗi lần nữa.
+   Nếu trình duyệt không hỗ trợ File System Access API (không có
+   showSaveFilePicker) thì rơi về hành vi cũ: luôn tự động tải file mới,
+   giống hệt nút gốc.
+   options: { suggestedName, handleKey, label } — tên file gợi ý + key lưu
+   handle riêng cho từng biến thể (GhiDe / New), để không ghi nhầm vào file
+   của biến thể kia; label chỉ để hiện trong cảnh báo thành công cho dễ phân
+   biệt đã ghi đè hay tạo mới file nào. */
+const exportToExcelOverwrite = async (data, options) => {
+  const suggestedName = (options && options.suggestedName) || "B_FILE_01.xlsx";
+  const handleKey = (options && options.handleKey) || EXPORT_HANDLE_KEY_GHIDE;
+  const label = (options && options.label) || suggestedName;
+
+  const wb = XLSX.utils.book_new();
+  data.forEach((e, i) => {
+    const ws = XLSX.utils.aoa_to_sheet(e);
+    XLSX.utils.book_append_sheet(wb, ws, `${i + 1}`);
+  });
+
+  if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function") {
+    // Trình duyệt không hỗ trợ ghi đè -> tự động tải về như nút gốc luôn
+    XLSX.writeFile(wb, suggestedName);
+    alert(`✅ Đã tải file "${suggestedName}" về (${label}).`);
+    return;
+  }
+
+  try {
+    let handle = await getSavedExportHandle(handleKey);
+    if (handle && !(await verifyExportWritePermission(handle))) {
+      handle = null; // mất quyền ghi (hoặc file đã bị xoá/di chuyển) -> phải chọn lại
+    }
+    const isFirstTime = !handle;
+    if (!handle) {
+      // Chưa có file nào được lưu cho biến thể này -> tạo file thứ 1
+      handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [
+          {
+            description: "Excel",
+            accept: {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                [".xlsx"],
+            },
+          },
+        ],
+      });
+      await saveExportHandle(handleKey, handle); // ghi nhớ lại đúng file này cho các lần ghi đè sau
+    }
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const writable = await handle.createWritable();
+    await writable.write(
+      new Blob([wbout], { type: "application/octet-stream" }),
+    );
+    await writable.close();
+    // Cảnh báo (alert) để biết chắc đã GHI ĐÈ / TẠO MỚI thành công, vì thao
+    // tác này không tự hiện thông báo tải về như file bình thường.
+    alert(
+      isFirstTime
+        ? `✅ Đã tạo file "${handle.name}" (${label}). Từ lần sau sẽ tự ghi đè lên đúng file này.`
+        : `✅ Đã GHI ĐÈ thành công lên file "${handle.name}" (${label}).`,
+    );
+  } catch (error) {
+    if (error && error.name === "AbortError") return; // người dùng bấm huỷ hộp thoại chọn nơi lưu
+    console.error("Lỗi ghi đè file Excel:", error);
+    alert("Có lỗi khi ghi đè file, xuất ra file mới thay thế: " + error.message);
+    XLSX.writeFile(wb, suggestedName);
+  }
+};
+
 const ChuyenDoi_Buoc_1 = {
   HuongDanSoureCodeToEditRs4: () => {
     $("#ResID04").text(
-      `(1) Edit lại sourceCodeToEdit:  getDocumentContent_helper_function/JSON_chuyendoiSangDangThucbang (2)Chào mừng đến với Các Bước chuyển đổi từ JSON ban đầu 
-      (1) Lấy tất cả Object có Type là không có HD | 
+      `(1) Edit lại sourceCodeToEdit:  getDocumentContent_helper_function/JSON_chuyendoiSangDangThucbang (2)Chào mừng đến với Các Bước chuyển đổi từ JSON ban đầu
+      (1) Lấy tất cả Object có Type là không có HD |
       Từ file excel thuần không chuyển đổi A-B-C`,
     );
   },
   LayBangFsp_1bang_toCopy: () => FN_01(),
   LayBangZZZZA1: () => FN_ZZZZA1(),
   DaCo_ZZZZA1_GHEP_HD01_exportFileExcel: () => FN_ZZZZA1_HD01(),
+  // Giống hệt nút trên, nhưng GHI ĐÈ lên đúng file đã xuất lần trước thay vì
+  // tạo file mới mỗi lần — tiện khi chạy qua TEMPLATE, không cần chọn lại
+  // đường dẫn file mỗi lần chạy.
+  DaCo_ZZZZA1_GHEP_HD01_exportFileExcel_GhiDeFileCu: () => FN_ZZZZA1_HD01(true),
+  // Cặp nút "New": giống hệt LayBangZZZZA1 (bước lấy/chuẩn bị dữ liệu không
+  // đổi), nhưng khi xuất file (DaCo..._New) chỉ lấy 1 sheet đại diện cho
+  // phần "chưa thay thế" thay vì đủ N sheet, và LUÔN ghi đè lên file cũ.
+  LayBangZZZZA1_New: () => FN_ZZZZA1(),
+  DaCo_ZZZZA1_GHEP_HD01_exportFileExcel_New: () => FN_ZZZZA1_HD01_New(),
 };
 export { ChuyenDoi_Buoc_1 };
 // ─────────────────────────────────────────────────────────────────────────────
