@@ -802,7 +802,7 @@ function GetDocument() {
               <input
                 type="text"
                 placeholder="VD: Xuất JSON Remotion"
-                style={styles.textInput}
+                style={{ ...styles.textInput, flex: "none", width: "100%", boxSizing: "border-box" }}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
@@ -818,7 +818,7 @@ function GetDocument() {
               }}
             >
               <label style={styles.formLabel}>
-                File trên máy (chỉ chọn 1 lần, gắn cố định vào template)
+                File (chọn 1 lần, cố định)
                 <button
                   type="button"
                   style={{
@@ -841,7 +841,12 @@ function GetDocument() {
                   type="number"
                   min="1"
                   placeholder="Từ"
-                  style={{ ...styles.textInput, width: "64px" }}
+                  style={{
+                    ...styles.textInput,
+                    flex: "none",
+                    width: "64px",
+                    boxSizing: "border-box",
+                  }}
                   value={formFrom}
                   onChange={(e) => setFormFrom(e.target.value)}
                 />
@@ -852,7 +857,12 @@ function GetDocument() {
                   type="number"
                   min="1"
                   placeholder="Đến"
-                  style={{ ...styles.textInput, width: "64px" }}
+                  style={{
+                    ...styles.textInput,
+                    flex: "none",
+                    width: "64px",
+                    boxSizing: "border-box",
+                  }}
                   value={formTo}
                   onChange={(e) => setFormTo(e.target.value)}
                 />
@@ -864,6 +874,7 @@ function GetDocument() {
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
                 gap: "0.5rem",
+                alignItems: "start",
                 marginBottom: "1rem",
               }}
             >
@@ -871,7 +882,12 @@ function GetDocument() {
                 <label key={i} style={styles.formLabel}>
                   {`Bước ${i + 1}`}
                   <select
-                    style={styles.textInput}
+                    style={{
+                      ...styles.textInput,
+                      flex: "none",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
                     value={stepValue}
                     onChange={(e) => {
                       const next = [...formSteps];
@@ -1232,17 +1248,36 @@ async function saveTemplatesList(list) {
  * (top-level) trong 3 module nút chuyển đổi (Button_chuyendoi_001,
  * ChuyenDoi_Buoc_1, ChuyenDoi_Buoc_2) + vài thao tác tiện ích khác trên
  * trang (tải JSON, copy kết quả) không nằm trong module nào.
- */
+ *
+ * Một số module (vd JSON_chuyendoiSangDangThucbang) không export hàm trực
+ * tiếp mà export ra 1 OBJECT gộp nhóm các "nút con" bên trong (đúng kiểu
+ * "chọn nút cha rồi mới thấy nút con" ở panel chính "📌 Các nút con"). Nếu
+ * chỉ lọc `typeof === "function"` ở lớp ngoài thì mấy nút con này BỊ BỎ SÓT
+ * hoàn toàn (không hiện ra để chọn) — nên đệ quy thêm 1 lớp: gặp object thì
+ * lấy tiếp các hàm bên trong nó, gắn nhãn "Cha — Con" cho rõ, thay vì bắt
+ * người dùng phải chọn cha rồi mới chọn con qua 2 bước riêng trong popup. */
 function buildActionRegistry() {
   const registry = [];
   const addModule = (moduleObj, moduleLabel) => {
     if (!moduleObj) return;
     Object.keys(moduleObj).forEach((key) => {
-      if (typeof moduleObj[key] === "function") {
+      const value = moduleObj[key];
+      if (typeof value === "function") {
         registry.push({
           id: `${moduleLabel}::${key}`,
           label: `${moduleLabel} — ${key}`,
-          run: moduleObj[key],
+          run: value,
+        });
+      } else if (value && typeof value === "object") {
+        // "nút cha" gộp nhóm — lấy các "nút con" (hàm) bên trong nó ra luôn
+        Object.keys(value).forEach((childKey) => {
+          if (typeof value[childKey] === "function") {
+            registry.push({
+              id: `${moduleLabel}::${key}::${childKey}`,
+              label: `${moduleLabel} — ${key} — ${childKey}`,
+              run: value[childKey],
+            });
+          }
         });
       }
     });
